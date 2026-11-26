@@ -1,0 +1,104 @@
+# Upstream appVersion: the Deployment of manifests/egress-credential-injection/k8s-credential-provider.yaml.
+# Reference install changes: release image, --preview= (ate-setup, --credential-provider={"name":"k8s.io"}).
+# Chart changes: annotation checksum/namespace-policy; the provider reads the policy at start only.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-credential-provider
+  namespace: ate-system
+  labels:
+    app: k8s-credential-provider
+  annotations:
+    {{- include "krci-substrate.syncWave" "control-dataplane" | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k8s-credential-provider
+  template:
+    metadata:
+      labels:
+        app: k8s-credential-provider
+      annotations:
+        checksum/namespace-policy: {{ include (print $.Template.BasePath "/k8s-credential-provider/configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: k8s-credential-provider
+      securityContext:
+        runAsUser: 65532
+        runAsGroup: 65532
+        runAsNonRoot: true
+      containers:
+      - name: k8s-credential-provider
+        image: {{ include "krci-substrate.image" (dict "image" .Values.credentialProvider.image "path" "credentialProvider.image") }}
+        args:
+        - "--listen-address=:50051"
+        - "--metrics-address=:9090"
+        - "--health-address=:9091"
+        # /statusz on loopback: kubectl port-forward only.
+        - "--status-address=127.0.0.1:4040"
+        # Serves with the servicedns identity (SAN k8s-credential-provider.ate-system.svc). Requires a
+        # podidentity client certificate and pins its SAN to the egress gateway
+        # (spiffe://cluster.local/ns/ate-system/sa/atenet-egress).
+        - "--server-cred-bundle=/run/servicedns.podcert.ate.dev/credential-bundle.pem"
+        - "--client-ca-file=/run/podidentity.podcert.ate.dev/trust-bundle.pem"
+        # atespace to namespace authorization, default deny.
+        - "--namespace-policy-file=/etc/k8s-credential-provider/namespace-policy.yaml"
+        - "--log-level=info"
+        - --preview=
+        ports:
+        - name: grpc
+          containerPort: 50051
+        - name: metrics
+          containerPort: 9090
+        - name: health
+          containerPort: 9091
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: health
+          periodSeconds: 10
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        volumeMounts:
+        - name: namespace-policy
+          mountPath: /etc/k8s-credential-provider
+          readOnly: true
+        - name: servicedns
+          mountPath: /run/servicedns.podcert.ate.dev
+          readOnly: true
+        - name: podidentity
+          mountPath: /run/podidentity.podcert.ate.dev
+          readOnly: true
+      volumes:
+      - name: namespace-policy
+        configMap:
+          name: k8s-credential-provider-namespace-policy
+      - name: servicedns
+        projected:
+          sources:
+          - podCertificate:
+              signerName: servicedns.podcert.ate.dev/identity
+              keyType: ECDSAP256
+              credentialBundlePath: credential-bundle.pem
+          - clusterTrustBundle:
+              signerName: servicedns.podcert.ate.dev/identity
+              labelSelector:
+                matchLabels:
+                  podcert.ate.dev/canarying: live
+              path: trust-bundle.pem
+      - name: podidentity
+        projected:
+          sources:
+          - podCertificate:
+              signerName: podidentity.podcert.ate.dev/identity
+              keyType: ECDSAP256
+              credentialBundlePath: credential-bundle.pem
+          - clusterTrustBundle:
+              signerName: podidentity.podcert.ate.dev/identity
+              labelSelector:
+                matchLabels:
+                  podcert.ate.dev/canarying: live
+              path: trust-bundle.pem

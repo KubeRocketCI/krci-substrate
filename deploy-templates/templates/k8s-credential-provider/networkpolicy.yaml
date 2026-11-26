@@ -1,0 +1,24 @@
+# Upstream appVersion: the NetworkPolicy of manifests/egress-credential-injection/k8s-credential-provider.yaml.
+# Only the egress gateway reaches the gRPC port. The provider also pins the client certificate to the
+# egress gateway identity. Enforced only by network plugins that implement NetworkPolicy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: k8s-credential-provider
+  namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "base" | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: k8s-credential-provider
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: atenet-egress
+    ports:
+    - protocol: TCP
+      port: 50051

@@ -7,6 +7,8 @@ kind: Certificate
 metadata:
   name: {{ .source }}
   namespace: {{ .namespace }}
+  annotations:
+    {{- include "krci-substrate.syncWave" "pki" | nindent 4 }}
 spec:
   secretName: {{ .source }}
   commonName: {{ .source }}

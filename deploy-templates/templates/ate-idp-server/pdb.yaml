@@ -4,6 +4,8 @@ kind: PodDisruptionBudget
 metadata:
   name: ate-idp-server
   namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "control-dataplane" | nindent 4 }}
 spec:
   maxUnavailable: 1
   selector:

@@ -1,6 +1,6 @@
 # krci-substrate
 
-![Version: 0.3.0](https://img.shields.io/badge/Version-0.3.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v1.0.1](https://img.shields.io/badge/AppVersion-v1.0.1-informational?style=flat-square)
+![Version: 0.4.0](https://img.shields.io/badge/Version-0.4.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v1.0.1](https://img.shields.io/badge/AppVersion-v1.0.1-informational?style=flat-square)
 
 A Helm chart for upstream Agent Substrate, matching the upstream ate-setup install
 
@@ -26,9 +26,37 @@ Objects copied from the upstream manifests of the release tag:
 | `templates/ate-controller/` | ServiceAccounts `ate-client`, `ate-controller`, the bindings, Service and Deployment of `manifests/ate-install/ate-controller.yaml`; ClusterRole and Role of `manifests/ate-install/generated/role.yaml` |
 | `templates/networkpolicies.yaml` | `manifests/ate-install/ate-system-networkpolicies.yaml` |
 | `templates/ate-otel-config.yaml` | `manifests/ate-install/ate-otel-config.yaml` |
+| `templates/sandboxconfig/gvisor.yaml` | `manifests/ate-install/sandboxconfig-gvisor.yaml` |
+| `templates/sandboxconfig/validation.yaml` | `manifests/ate-install/sandboxconfig-validation.yaml` |
+| `templates/atelet/` | ServiceAccount, ClusterRole, ClusterRoleBinding, Role, RoleBinding, ResourceQuota and DaemonSet of `manifests/ate-install/atelet.yaml` |
+| `templates/atenet-router/` | ServiceAccount, Role, RoleBinding, ConfigMap, Deployment and Service of `manifests/ate-install/atenet-router.yaml` |
+| `templates/atenet-egress/` | ServiceAccount, ConfigMap, Deployment and Service of `manifests/ate-install/atenet-egress.yaml` |
+| `templates/k8s-credential-provider/` | `manifests/egress-credential-injection/k8s-credential-provider.yaml`, `manifests/egress-credential-injection/namespace-policy.yaml` |
 | `files/postgres/setup.sql` | `pkg/postgressetup/setup.sql`, byte for byte |
+| `files/atenet-egress/envoy.yaml` | key `envoy.yaml` of ConfigMap `atenet-egress` in `manifests/ate-install/atenet-egress.yaml`, byte for byte |
 
 Reference install changes in every substrate workload: image `<service>.image` (`<repository>:<tag>@<digest>`), `--preview=` appended. ate-api-server: `--authz-bootstrap-owners` appended, pod template annotation `ate.dev/env-hash`. ate-idp-server: `--issuer=https://idp.ate-system.svc` appended.
+
+Reference install settings of the dataplane: envoy (`--atenet-dataplane=envoy`), image `envoy-dataplane` in place of `${ENVOY_DATAPLANE_IMAGE}`. Credential provider `{"name":"k8s.io"}`: k8s-credential-provider deployed; on the atenet-egress `ext-proc` container, the `--credential-provider-*` flags in place of the `#ATE_EGRESS_INJECT_FLAGS` marker, server name `k8s-credential-provider.ate-system.svc`. atenet-router: `--ingress-allowed-spiffe-ids` appended when `router.ingressAllowedSpiffeIds` is not empty. Sandbox classes: gvisor only (`--sandbox-classes=gvisor`).
+
+Upstream objects not in the chart:
+
+- `manifests/ate-install/atenet-router-monitoring.yaml`: PodMonitoring `atenet-router-envoy`, GKE Managed Prometheus only.
+- `manifests/egress-credential-injection/sample-secret.yaml`: example; `ate-setup` does not apply it.
+- `manifests/ate-install/sandboxconfig-microvm.yaml.tmpl`: microvm sandbox class; needs `/dev/kvm` and staged guest assets.
+
+### Install order
+
+Argo CD sync waves, annotation `argocd.argoproj.io/sync-wave` on every chart object (`templates/_helpers.tpl`, `krci-substrate.syncWave`). Argo CD applies a wave after the objects of the earlier waves are healthy.
+
+| Wave | Objects |
+|---|---|
+| `0` | CRDs (`crds/`, no annotation), Namespaces, ConfigMap `ate-otel-config`, NetworkPolicies, ValidatingAdmissionPolicy `sandboxconfig-assets` |
+| `1` | PKI (`templates/pki/`), podcertificate-controller, SandboxConfig `gvisor-default` |
+| `2` | PostgreSQL, atelet |
+| `3` | ate-api-server, ate-idp-server, ate-controller, k8s-credential-provider, atenet-router, atenet-egress |
+
+atelet rolls out before ate-api-server on every sync. Helm without Argo CD ignores the waves.
 
 Chart objects without an upstream manifest:
 
@@ -47,6 +75,15 @@ Chart objects without an upstream manifest:
 | ConfigMap `ate-otel-config` | `OTEL_EXPORTER_OTLP_ENDPOINT` of the GKE managed collector | no endpoint; `OTEL_TRACES_EXPORTER`, `OTEL_METRICS_EXPORTER`, `ATE_WORKER_OTEL_TRACES_EXPORTER`, `ATE_WORKER_OTEL_METRICS_EXPORTER`: `none` | No collector on the target clusters yet. Logs stay on stdout. |
 | StatefulSet `postgres` | `ate-setup` runs the setup SQL with `kubectl exec` after each rollout | the image entrypoint runs it from `/docker-entrypoint-initdb.d`, on an empty data directory only | No exec under GitOps. An existing volume keeps its roles and schema. |
 | StatefulSet `postgres` | base size: resources and 500Gi claim; StorageClass from `--postgres-storage-class` | `postgres.resources`, `postgres.storage` | Default is the base size. Kind: the upstream kind overlay values. |
+| Every chart object | no Argo CD annotations | `argocd.argoproj.io/sync-wave` | Install order under Argo CD: [Install order](#install-order). |
+| DaemonSet `atelet`, sidecar `objectstore-plugin` | GCS (`ATE_STORAGE_BACKEND=gcs`, ambient Google credentials) | S3, same environment as the ate-api-server sidecar | Same as ate-api-server. |
+| ServiceAccount `atelet` | no annotations | `atelet.serviceAccount.annotations` | IRSA, same as ate-api-server. |
+| DaemonSet `atelet`, image credential provider | GKE host paths `/home/kubernetes/bin`, `/etc/srv/kubernetes/cri_auth_config.yaml` | `atelet.imageCredentialProvider`: host paths; `enabled: false` drops the two flags and mounts, as the upstream kind overlay does | Host paths differ per node distribution (EKS: `/etc/eks/image-credential-provider`). Default: the GKE paths. |
+| Deployments `atenet-router`, `atenet-egress`, pod template | atenet-router: annotations `prometheus.io/scrape`, `prometheus.io/port`; atenet-egress: no annotations. `ate-setup` restarts `atenet-egress` after each deploy with a credential provider | annotation `checksum/config` added, the sha256 of the rendered ConfigMap | Envoy reads its configuration at start only. A ConfigMap change rolls the Deployment. |
+| Deployments `atenet-router`, `atenet-egress` | `replicas: 1` | `router.replicas`, `egress.replicas` | Default: 1. |
+| ConfigMap `k8s-credential-provider-namespace-policy` | applied only when absent, `policies: []`; the operator edits it in the cluster | `policies` from `credentialProvider.namespacePolicies`; the chart owns the ConfigMap | GitOps: the policy lives in values. Default: `[]`, same render. |
+| Deployment `k8s-credential-provider`, pod template | no annotations | annotation `checksum/namespace-policy` | The provider reads the policy at start only. A policy change rolls the Deployment. |
+| Deployment `atenet-egress`, `egress.upstreamCA` set | upstream TLS trusts the image system roots `/etc/ssl/certs/ca-certificates.crt` | ConfigMap `atenet-egress-upstream-ca`; init container `upstream-ca-bundle` (envoy image) writes system roots plus `egress.upstreamCA` to an emptyDir; clusters `egress_forward_proxy` and `egress_forward_proxy_grpc` trust that file | Origins behind a private CA. Default: empty, same render as the reference install. |
 
 ### S3 access
 
@@ -55,7 +92,7 @@ Every pod with an `objectstore-plugin` sidecar reads and writes the snapshot buc
 | Pod | Sidecar mode | S3 use | ServiceAccount |
 |---|---|---|---|
 | ate-api-server | `control` | copies snapshots for tags; deletes snapshots nothing refers to | `ate-system/ate-api-server` |
-| atelet (dataplane, not in the chart yet) | `node` | uploads and downloads snapshot files; reads sandbox assets | `ate-system/atelet` |
+| atelet | `node` | uploads and downloads snapshot files; reads sandbox assets | `ate-system/atelet` |
 
 - Give S3 access to both ServiceAccounts: one EKS Pod Identity association each, or the IRSA annotation `eks.amazonaws.com/role-arn` in `<service>.serviceAccount.annotations`.
 - `snapshots.s3` is the shared S3 environment of both sidecars, `snapshots.s3.credentialsSecret` included.
@@ -72,6 +109,10 @@ One top-level key per service. A value exists only for a setting that changes of
 | `apiServer` | ate-api-server, sidecar `objectstorePlugin` | `image`, `replicas`, `serviceAccountIssuer`, `bootstrapOwners`, `serviceAccount.annotations`, `objectstorePlugin.image` |
 | `idpServer` | ate-idp-server | `image`, `replicas` |
 | `controller` | ate-controller | `image`, `replicas` |
+| `atelet` | atelet, sidecar `objectstorePlugin` | `image`, `serviceAccount.annotations`, `objectstorePlugin.image`, `imageCredentialProvider` |
+| `router` | atenet-router, container `envoy` | `image`, `envoy.image`, `replicas`, `ingressAllowedSpiffeIds` |
+| `egress` | atenet-egress, containers `sdsmint`, `ext-proc`, `envoy` | `image`, `envoy.image`, `replicas`, `upstreamCA` |
+| `credentialProvider` | k8s-credential-provider | `image`, `namespacePolicies` |
 
 Shared keys: `snapshots.s3` (every objectstore-plugin sidecar), `pki` (pool Secrets).
 
@@ -88,6 +129,14 @@ Defaults are the reference install.
 - ate-api-server reaches the database at `postgres.ate-system.svc:5432`, `sslmode=verify-full`.
 - `kubectl ate` port-forwards to Service `ate-system/api` and mints a token for ServiceAccount `ate-system/ate-client`, a bootstrap owner by default (`apiServer.bootstrapOwners`). For a shared install, set it to your operator principals.
 - A change of `templates/ate-api-server/config.yaml` changes `ate.dev/env-hash` and rolls ate-api-server.
+
+## Dataplane
+
+- atelet runs on every node, also on nodes tainted `ate.dev/sandboxClass=<class>:NoSchedule`. Drain: `--drain-delay=0s`, `--drain-timeout=5m`, `terminationGracePeriodSeconds: 330`.
+- Sandbox class: gvisor, SandboxConfig `gvisor-default` (class default). atelet downloads the gVisor release from `gs://gvisor` anonymously: nodes need egress to `storage.googleapis.com`.
+- atenet-router admits only clients with a podidentity certificate whose SPIFFE ID is in `router.ingressAllowedSpiffeIds`. Empty (default): no client reaches actors. `kubectl ate proxy actor` presents `spiffe://cluster.local/ns/ate-system/sa/atenet-client`.
+- atenet-egress: actor egress through the egress gateway, policed by each actor's EgressPolicy. WebSocket upgrades are rejected. Upstream TLS trusts the image system roots, plus `egress.upstreamCA` when set.
+- Egress credential injection: atenet-egress resolves `ate-secret://k8s.io/...` URIs through k8s-credential-provider (mTLS, server name `k8s-credential-provider.ate-system.svc`). An atespace resolves Secrets only in the namespaces `credentialProvider.namespacePolicies` lists for it. k8s-credential-provider reads Secrets in every namespace.
 
 Namespaces are fixed: `ate-system` and `podcertificate-controller-system`. The release namespace is not used.
 
@@ -154,10 +203,32 @@ Helm installs `crds/` on first install only; it does not upgrade them.
 | apiServer.replicas | int | `2` | Replica count. |
 | apiServer.serviceAccount.annotations | object | `{}` | ServiceAccount annotations. IRSA: `eks.amazonaws.com/role-arn: arn:aws:iam::<account>:role/<role>`. |
 | apiServer.serviceAccountIssuer | string | `""` |  |
+| atelet.image.digest | string | `"sha256:f6707957b470d8a8529e65a4ec3eb1ad5182a607b313b6b1628c7fe6c0e5a9e6"` | Image digest `sha256:<64 hex>`. Empty: tag only. |
+| atelet.image.repository | string | `"ghcr.io/agent-substrate/substrate/atelet"` | Image repository. |
+| atelet.image.tag | string | `"v1.0.1"` | Image tag. |
+| atelet.imageCredentialProvider.binDir | string | `"/home/kubernetes/bin"` | Host directory of the credential provider binaries. Upstream default: GKE. EKS: `/etc/eks/image-credential-provider`. |
+| atelet.imageCredentialProvider.config | string | `"/etc/srv/kubernetes/cri_auth_config.yaml"` | Host file of the kubelet CredentialProviderConfig. Upstream default: GKE. EKS: `/etc/eks/image-credential-provider/config.json`. |
+| atelet.imageCredentialProvider.enabled | bool | `true` | Mount the node credential provider and pass it to atelet. Set false on nodes without one (kind). |
+| atelet.objectstorePlugin.image.digest | string | `"sha256:311cc9cfb9ee8c344f3ebc3e4d5cafb88468840023b62d1c47c6338ed32b0352"` | Image digest `sha256:<64 hex>`. Empty: tag only. |
+| atelet.objectstorePlugin.image.repository | string | `"ghcr.io/agent-substrate/substrate/objectstore-plugin"` | Image repository. |
+| atelet.objectstorePlugin.image.tag | string | `"v1.0.1"` | Image tag. |
+| atelet.serviceAccount.annotations | object | `{}` | ServiceAccount annotations. IRSA: `eks.amazonaws.com/role-arn: arn:aws:iam::<account>:role/<role>`. |
 | controller.image.digest | string | `"sha256:b63519a821f4c702a689caf5b1ff549a8d6134ac3da94def30c71f914a70d614"` | Image digest `sha256:<64 hex>`. Empty: tag only. |
 | controller.image.repository | string | `"ghcr.io/agent-substrate/substrate/atecontroller"` | Image repository. |
 | controller.image.tag | string | `"v1.0.1"` | Image tag. |
 | controller.replicas | int | `1` | Replica count. |
+| credentialProvider.image.digest | string | `"sha256:46a2872c624c6e3af98984f1097d2205f012ea6c471516ac5189ceb3adef96e5"` | Image digest `sha256:<64 hex>`. Empty: tag only. |
+| credentialProvider.image.repository | string | `"ghcr.io/agent-substrate/substrate/kubernetes-secrets"` | Image repository. |
+| credentialProvider.image.tag | string | `"v1.0.1"` | Image tag. |
+| credentialProvider.namespacePolicies | list | `[]` | Namespaces whose Secrets each atespace may resolve: `[{atespace: <name>, allowedNamespaces: [<namespace>]}]`. Default deny: an atespace not listed resolves no Secret. A change restarts the provider. |
+| egress.envoy.image.digest | string | `"sha256:6f59332e4e45da4b1600cf1f0c2104c595d875b661be86b4b8c5b16603ad8191"` | Image digest `sha256:<64 hex>`. Empty: tag only. |
+| egress.envoy.image.repository | string | `"ghcr.io/agent-substrate/substrate/envoy-dataplane"` | Image repository. |
+| egress.envoy.image.tag | string | `"v1.0.1"` | Image tag. |
+| egress.image.digest | string | `"sha256:ccfa3265be2f45d5ffa7d86ffbe32fa0976426eb1fe1bb28dffbce451c1ea5d7"` | Image digest `sha256:<64 hex>`. Empty: tag only. |
+| egress.image.repository | string | `"ghcr.io/agent-substrate/substrate/atenet"` | Image repository, shared by the sdsmint and ext-proc containers. |
+| egress.image.tag | string | `"v1.0.1"` | Image tag. |
+| egress.replicas | int | `1` | Replica count. |
+| egress.upstreamCA | string | `""` | PEM CA certificates the egress gateway trusts for upstream TLS, in addition to the image system roots. Certificates only; a private key fails the render. Empty: system roots only. |
 | idpServer.image.digest | string | `"sha256:5d9302255998a3f376cbea8d8860488d20b6c030417c0c3ea7fba53a67f2c9f7"` | Image digest `sha256:<64 hex>`. Empty: tag only. |
 | idpServer.image.repository | string | `"ghcr.io/agent-substrate/substrate/ate-idp-server"` | Image repository. |
 | idpServer.image.tag | string | `"v1.0.1"` | Image tag. |
@@ -175,8 +246,16 @@ Helm installs `crds/` on first install only; it does not upgrade them.
 | postgres.resources | object | `{"limits":{"cpu":"16","memory":"2Gi"},"requests":{"cpu":"2","memory":"1Gi"}}` | Upstream base. Sized for the activation load of the whole control plane. |
 | postgres.storage.size | string | `"500Gi"` | Upstream base. Headroom for WAL churn; also scales provisioned IOPS on some storage classes. |
 | postgres.storage.storageClassName | string | `""` | Empty: cluster default StorageClass. |
+| router.envoy.image.digest | string | `"sha256:6f59332e4e45da4b1600cf1f0c2104c595d875b661be86b4b8c5b16603ad8191"` | Image digest `sha256:<64 hex>`. Empty: tag only. |
+| router.envoy.image.repository | string | `"ghcr.io/agent-substrate/substrate/envoy-dataplane"` | Image repository. |
+| router.envoy.image.tag | string | `"v1.0.1"` | Image tag. |
+| router.image.digest | string | `"sha256:ccfa3265be2f45d5ffa7d86ffbe32fa0976426eb1fe1bb28dffbce451c1ea5d7"` | Image digest `sha256:<64 hex>`. Empty: tag only. |
+| router.image.repository | string | `"ghcr.io/agent-substrate/substrate/atenet"` | Image repository. |
+| router.image.tag | string | `"v1.0.1"` | Image tag. |
+| router.ingressAllowedSpiffeIds | list | `[]` | SPIFFE IDs of the clients the router lets reach actors. Empty: the router serves no traffic. `kubectl ate proxy actor`: `spiffe://cluster.local/ns/ate-system/sa/atenet-client`. |
+| router.replicas | int | `1` | Replica count. |
 | snapshots.s3.bucket | string | `""` | Required. S3 bucket name rules. |
-| snapshots.s3.credentialsSecret | string | `""` | Existing Secret in ate-system with keys AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY. Credentials come only from a Secret, never from values. Use only for the kind test bed or an S3-compatible store without workload identity. EKS: leave empty (AWS SDK default credential chain) and give S3 access to ate-system/ate-api-server, and with the dataplane ate-system/atelet, through EKS Pod Identity or IRSA (`<service>.serviceAccount.annotations`). |
+| snapshots.s3.credentialsSecret | string | `""` | Existing Secret in ate-system with keys AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY. Credentials come only from a Secret, never from values. Use only for the kind test bed or an S3-compatible store without workload identity. EKS: leave empty (AWS SDK default credential chain) and give S3 access to ate-system/ate-api-server and ate-system/atelet through EKS Pod Identity or IRSA (`<service>.serviceAccount.annotations`). |
 | snapshots.s3.endpoint | string | `""` | AWS_ENDPOINT_URL. Empty: the AWS endpoint of the region. |
 | snapshots.s3.region | string | `""` | Required. AWS_REGION. |
 | snapshots.s3.usePathStyle | bool | `false` | AWS_S3_USE_PATH_STYLE. Set for MinIO, RustFS and other S3-compatible stores. |

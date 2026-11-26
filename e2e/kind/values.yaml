@@ -24,3 +24,13 @@ snapshots:
     endpoint: http://rustfs.ate-system.svc:9000
     usePathStyle: true
     credentialsSecret: rustfs-credentials
+
+# Upstream manifests/ate-install/kind/atelet overlay: kind nodes have no credential provider plugin.
+atelet:
+  imageCredentialProvider:
+    enabled: false
+
+# The client identity of kubectl ate proxy actor (upstream demos/counter prerequisite).
+router:
+  ingressAllowedSpiffeIds:
+    - spiffe://cluster.local/ns/ate-system/sa/atenet-client

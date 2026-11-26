@@ -6,6 +6,8 @@ metadata:
   namespace: ate-system
   labels:
     app: ate-controller
+  annotations:
+    {{- include "krci-substrate.syncWave" "control-dataplane" | nindent 4 }}
 spec:
   selector:
     app: ate-controller

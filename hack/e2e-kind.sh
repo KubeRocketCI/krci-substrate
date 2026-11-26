@@ -14,8 +14,12 @@ readonly EXTERNAL_SECRETS_CHART="oci://ghcr.io/external-secrets/charts/external-
 # kubectl-ate release binary; keep at the chart appVersion.
 readonly KUBECTL_ATE_VERSION="v1.0.1"
 readonly KUBECTL_ATE_RELEASES="https://github.com/agent-substrate/substrate/releases/download"
-# Atespace the smoke creates and lists; kept between runs.
+# Atespace and namespace of the smoke workload (e2e/kind/smoke-*.yaml); kept between runs.
 readonly SMOKE_ATESPACE="krci-substrate-smoke"
+# Smoke actor: deleted and created again on every run.
+readonly SMOKE_ACTOR="smoke-1"
+# Local port of kubectl ate proxy actor to actor port 80.
+readonly SMOKE_PROXY_PORT="18000"
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 KIND_DIR="${ROOT}/e2e/kind"
@@ -24,8 +28,9 @@ CLUSTER="krci-substrate"
 CONTEXT="kind-krci-substrate"
 KUBECONFIG_FILE="${ROOT}/.cache/kind-krci-substrate.kubeconfig"
 KUBECTL_ATE="${ROOT}/.cache/bin/kubectl-ate-${KUBECTL_ATE_VERSION}"
-# Chart Deployments in ate-system, besides StatefulSet postgres.
-readonly CONTROL_PLANE_DEPLOYMENTS=(ate-api-server ate-idp-server ate-controller)
+# Chart Deployments in ate-system, besides StatefulSet postgres and DaemonSet atelet.
+readonly CONTROL_PLANE_DEPLOYMENTS=(ate-api-server ate-idp-server ate-controller
+  k8s-credential-provider atenet-router atenet-egress)
 
 k() { kubectl --kubeconfig "${KUBECONFIG_FILE}" --context "${CONTEXT}" "$@"; }
 h() { helm --kubeconfig "${KUBECONFIG_FILE}" --kube-context "${CONTEXT}" "$@"; }
@@ -97,6 +102,7 @@ install_all() {
 
   k --namespace podcertificate-controller-system rollout status deployment/podcertificate-controller --timeout 5m
   k --namespace ate-system rollout status statefulset/postgres --timeout 5m
+  k --namespace ate-system rollout status daemonset/atelet --timeout 5m
   local deployment
   for deployment in "${CONTROL_PLANE_DEPLOYMENTS[@]}"; do
     k --namespace ate-system rollout status "deployment/${deployment}" --timeout 5m
@@ -123,6 +129,9 @@ secret_exists() { k --namespace "$1" wait --for=create secret "$2" --timeout 2m;
 trust_bundle_published() {
   k wait --for=create clustertrustbundle "$1" --timeout 2m >/dev/null
   k get clustertrustbundle "$1" -o jsonpath='{.spec.trustBundle}' | grep -q -- '-----BEGIN CERTIFICATE-----'
+}
+sandboxconfig_class_default() {
+  [ "$(k get sandboxconfig "$1" -o jsonpath='{.metadata.annotations.sandboxconfig\.ate\.dev/is-class-default}')" = "true" ]
 }
 
 # pg <sql>: runs sql as the local postgres superuser in postgres-0 (socket, trust); prints unaligned tuples.
@@ -168,6 +177,107 @@ atespace_created_and_listed() {
   ate get atespaces -o json | jq -e --arg n "${SMOKE_ATESPACE}" 'tostring | contains($n)' >/dev/null
 }
 
+# poll <seconds> <command...>: runs command every 5s until it succeeds; fails after <seconds>.
+poll() {
+  local deadline=$((SECONDS + $1))
+  shift
+  until "$@"; do
+    [ "${SECONDS}" -lt "${deadline}" ] || return 1
+    sleep 5
+  done
+}
+
+workerpool_ready() {
+  k apply -f "${KIND_DIR}/smoke-workerpool.yaml"
+  k --namespace "${SMOKE_ATESPACE}" wait --for=jsonpath='{.status.readyReplicas}'=2 workerpool/smoke --timeout 5m
+}
+
+# golden_tag: prints the golden tag name of the smoke template; fails while there is none, exits on a golden error.
+golden_tag() {
+  local status
+  status="$(ate get actor-template smoke -a "${SMOKE_ATESPACE}" -o json | jq -c '.status.goldenSnapshotStatus // {}')"
+  if jq -e '.errorMessage // "" | length > 0' <<<"${status}" >/dev/null; then
+    echo "golden snapshot failed: ${status}"
+    exit 1
+  fi
+  jq -e -r '.goldenTag.name // empty' <<<"${status}"
+}
+# The first golden snapshot on a node also downloads the gVisor release.
+actor_template_golden() {
+  ate get actor-template smoke -a "${SMOKE_ATESPACE}" >/dev/null 2>&1 \
+    || ate create actor-template -f "${KIND_DIR}/smoke-actor-template.yaml"
+  poll 600 golden_tag
+}
+
+actor_json() { ate get actor "${SMOKE_ACTOR}" -a "${SMOKE_ATESPACE}" -o json; }
+actor_state_is() { [ "$(actor_json | jq -r '.status.state')" = "$1" ]; }
+# snapshot_completed <owner>: the actor holds a snapshot of <owner> (SNAPSHOT_OWNER_TAG, SNAPSHOT_OWNER_ACTOR),
+# stored in the S3 fixture bucket; prints its URI.
+snapshot_completed() {
+  actor_json | jq -e -r --arg owner "$1" '.status.snapshots[]
+    | select(.owner == $owner and .durableSnapshot.state == "SNAPSHOT_STORAGE_STATE_COMPLETED")
+    | .durableSnapshot.object.snapshotUri | select(startswith("s3://ate-snapshots/"))'
+}
+
+# s3_object_count <s3 uri>: number of objects below the URI in the RustFS fixture, listed by a one-off aws-cli pod.
+s3_object_count() {
+  local image overrides
+  image="$(k --namespace ate-system get job rustfs-bucket-init -o jsonpath='{.spec.template.spec.containers[0].image}')"
+  overrides="$(jq -cn --arg image "${image}" --arg uri "${1%/}/" '{spec: {containers: [{
+    name: "rustfs-smoke-client", image: $image, args: ["s3", "ls", "--recursive", $uri],
+    envFrom: [{secretRef: {name: "rustfs-credentials"}}],
+    env: [{name: "AWS_REGION", value: "us-east-1"}, {name: "AWS_ENDPOINT_URL", value: "http://rustfs.ate-system.svc:9000"}]}]}}')"
+  k --namespace ate-system run rustfs-smoke-client --rm --attach --quiet --restart=Never \
+    --labels app=rustfs-smoke-client --image "${image}" --overrides "${overrides}" | grep -c .
+}
+
+actor_exists() { ate get actor "${SMOKE_ACTOR}" -a "${SMOKE_ATESPACE}" >/dev/null 2>&1; }
+actor_absent() { ! actor_exists; }
+
+actor_created_from_golden() {
+  if actor_exists; then
+    ate delete actor "${SMOKE_ACTOR}" -a "${SMOKE_ATESPACE}"
+    poll 120 actor_absent
+  fi
+  ate create actor "${SMOKE_ACTOR}" -a "${SMOKE_ATESPACE}" --template smoke
+  poll 60 actor_state_is ACTOR_STATE_SUSPENDED
+  snapshot_completed SNAPSHOT_OWNER_TAG
+}
+
+actor_resumed() {
+  ate resume actor "${SMOKE_ACTOR}" -a "${SMOKE_ATESPACE}"
+  actor_state_is ACTOR_STATE_RUNNING
+}
+
+actor_suspended_to_s3() {
+  local uri count
+  ate suspend actor "${SMOKE_ACTOR}" -a "${SMOKE_ATESPACE}" --mode=sync
+  actor_state_is ACTOR_STATE_SUSPENDED
+  uri="$(snapshot_completed SNAPSHOT_OWNER_ACTOR)"
+  count="$(s3_object_count "${uri}")"
+  echo "${uri}: ${count} objects"
+  [ "${count}" -gt 0 ]
+}
+
+# kubectl ate proxy actor authenticates to atenet-router as atenet-client (router.ingressAllowedSpiffeIds).
+# traefik/whoami answers with its hostname.
+http_through_router() {
+  local proxy body=""
+  # The binary itself, not the ate function: kill must reach the process. Output to a file: a background
+  # process on the check output pipe keeps check waiting.
+  "${KUBECTL_ATE}" --kubeconfig "${KUBECONFIG_FILE}" --context "${CONTEXT}" \
+    proxy actor "${SMOKE_ACTOR}" "${SMOKE_PROXY_PORT}:80" -a "${SMOKE_ATESPACE}" >"${ROOT}/.cache/smoke-proxy.log" 2>&1 &
+  proxy=$!
+  if poll 60 curl -fsS -o /dev/null --max-time 10 --noproxy 127.0.0.1 "http://127.0.0.1:${SMOKE_PROXY_PORT}/"; then
+    body="$(curl -fsS --max-time 10 --noproxy 127.0.0.1 "http://127.0.0.1:${SMOKE_PROXY_PORT}/")" || true
+  fi
+  kill "${proxy}" 2>/dev/null || true
+  wait "${proxy}" 2>/dev/null || true
+  echo "${body:-no response; proxy log:}"
+  [ -n "${body}" ] || cat "${ROOT}/.cache/smoke-proxy.log"
+  grep -q '^Hostname: ' <<<"${body}"
+}
+
 smoke() {
   check "cluster ${CONTEXT} reachable" k version --request-timeout=10s
   check "namespace ate-system" namespace_active ate-system
@@ -198,10 +308,19 @@ smoke() {
     check "deployment ${deployment} available" \
       k --namespace ate-system wait --for=condition=Available "deployment/${deployment}" --timeout 5m
   done
+  check "sandboxconfig gvisor-default is the gvisor class default" sandboxconfig_class_default gvisor-default
+  check "daemonset atelet ready" k --namespace ate-system rollout status daemonset/atelet --timeout 5m
   check "postgres: no role has a password" postgres_no_passwords
   check "postgres: ate-api-server certificate logins" postgres_certificate_logins
   check "kubectl ate ${KUBECTL_ATE_VERSION}" kubectl_ate_install
   check "kubectl ate: atespace ${SMOKE_ATESPACE} created and listed" atespace_created_and_listed
+  check "workerpool ${SMOKE_ATESPACE}/smoke ready" workerpool_ready
+  check "actor template smoke: golden snapshot" actor_template_golden
+  check "actor ${SMOKE_ACTOR}: created suspended from the golden snapshot in S3" actor_created_from_golden
+  check "actor ${SMOKE_ACTOR}: resumed" actor_resumed
+  check "actor ${SMOKE_ACTOR}: suspended, snapshot in the S3 fixture" actor_suspended_to_s3
+  check "actor ${SMOKE_ACTOR}: resumed from its snapshot" actor_resumed
+  check "actor ${SMOKE_ACTOR}: HTTP request through atenet-router" http_through_router
 }
 
 case "${1:-}" in

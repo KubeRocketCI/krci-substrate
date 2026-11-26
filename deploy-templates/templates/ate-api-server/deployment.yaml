@@ -6,6 +6,8 @@ kind: Deployment
 metadata:
   name: ate-api-server
   namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "control-dataplane" | nindent 4 }}
 spec:
   replicas: {{ .Values.apiServer.replicas }}
   strategy:
@@ -65,32 +67,7 @@ spec:
         env:
         # Storage settings live on the sidecar, same backend as the atelet sidecar.
         # ate-api-server exits if ATE_STORAGE_BACKEND is set on it.
-        - name: ATE_STORAGE_BACKEND
-          value: "s3"
-        {{- with .Values.snapshots.s3 }}
-        - name: AWS_REGION
-          value: {{ required "snapshots.s3.region is required" .region | quote }}
-        {{- with .endpoint }}
-        - name: AWS_ENDPOINT_URL
-          value: {{ . | quote }}
-        {{- end }}
-        {{- if .usePathStyle }}
-        - name: AWS_S3_USE_PATH_STYLE
-          value: "true"
-        {{- end }}
-        {{- with .credentialsSecret }}
-        - name: AWS_ACCESS_KEY_ID
-          valueFrom:
-            secretKeyRef:
-              name: {{ . | quote }}
-              key: AWS_ACCESS_KEY_ID
-        - name: AWS_SECRET_ACCESS_KEY
-          valueFrom:
-            secretKeyRef:
-              name: {{ . | quote }}
-              key: AWS_SECRET_ACCESS_KEY
-        {{- end }}
-        {{- end }}
+        {{- include "krci-substrate.s3Env" . | nindent 8 }}
         - name: ATE_API_ACTOR_JWT_ISSUER
           valueFrom:
             configMapKeyRef:

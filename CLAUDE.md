@@ -24,7 +24,7 @@ deploy-templates/crds/       upstream manifests/ate-install/generated/ate.dev_*.
 deploy-templates/templates/  one directory per component, one file per kind group (serviceaccount, rbac, deployment);
                              objects of upstream manifests as the reference install has them
 deploy-templates/templates/pki/  cert-manager and ESO objects of the pool Secrets (ADR-0001); pool list in _pools.tpl
-deploy-templates/files/      upstream files the templates embed, byte for byte (postgres/setup.sql)
+deploy-templates/files/      upstream files the templates embed, byte for byte (postgres/setup.sql, atenet-egress/envoy.yaml)
 deploy-templates/ci/         lint values: make helm-lint, ct lint
 ct-configs/                  chart-testing and yamllint config
 e2e/kind/                    kind test bed: cluster config, dependency values, fixtures; not part of the chart

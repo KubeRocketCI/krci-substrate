@@ -5,6 +5,8 @@ kind: Deployment
 metadata:
   name: ate-idp-server
   namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "control-dataplane" | nindent 4 }}
 spec:
   replicas: {{ .Values.idpServer.replicas }}
   strategy:

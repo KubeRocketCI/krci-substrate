@@ -1,0 +1,209 @@
+# Upstream appVersion: the Deployment of manifests/ate-install/atenet-router.yaml.
+# Reference install changes (ate-setup): release images, --ingress-allowed-spiffe-ids when set, --preview=.
+# Chart changes: annotation checksum/config; router.replicas.
+{{- $allowed := .Values.router.ingressAllowedSpiffeIds | default list }}
+{{- range $allowed }}
+{{- if not (regexMatch "^spiffe://[^/]+/.+" .) }}
+{{- fail (printf "router.ingressAllowedSpiffeIds: %q is not a SPIFFE ID spiffe://<trust domain>/<path>" .) }}
+{{- end }}
+{{- if contains "," . }}
+{{- fail (printf "router.ingressAllowedSpiffeIds: %q contains a comma" .) }}
+{{- end }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: atenet-router
+  namespace: ate-system
+  labels:
+    app: atenet-router
+  annotations:
+    {{- include "krci-substrate.syncWave" "control-dataplane" | nindent 4 }}
+spec:
+  replicas: {{ .Values.router.replicas }}
+  selector:
+    matchLabels:
+      app: atenet-router
+  template:
+    metadata:
+      labels:
+        app: atenet-router
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        checksum/config: {{ include (print $.Template.BasePath "/atenet-router/configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: atenet-router
+      # Must fit --drain-delay (13s) + Envoy drain (~15s) + derived --drain-timeout (~20s) + force stop
+      # and telemetry flush. Independent of --route-timeout.
+      terminationGracePeriodSeconds: 60
+      containers:
+      - name: atenet-router
+        image: {{ include "krci-substrate.image" (dict "image" .Values.router.image "path" "router.image") }}
+        args:
+        - "router"
+        # Ingress only: ingress ext_proc handler and the xDS server of the Envoy in this pod.
+        - "--mode=ingress"
+        - "--namespace=ate-system"
+        - "--port-xds=18000"
+        - "--port-extproc=50051"
+        - "--extproc-address=127.0.0.1"
+        - "--status-port=4040"
+        - "--port-https=8443"
+        - "--envoy-cert-path=/run/servicedns.podcert.ate.dev/credential-bundle.pem"
+        # CONNECT-tunneled ingress (arbitrary ports).
+        - "--port-connect-tls=8444"
+        # Clients present a certificate of the podidentity trust bundle with an allowed SPIFFE ID
+        # (router.ingressAllowedSpiffeIds). No allowed ID: the router serves no traffic.
+        - "--ingress-client-ca-file=/run/podidentity.podcert.ate.dev/trust-bundle.pem"
+        # mTLS to ateapi: servicedns trust bundle, podidentity client certificate.
+        - "--ateapi-address=k8s:///api.ate-system.svc:443"
+        - "--ateapi-ca-file=/run/servicedns-ca/trust-bundle.pem"
+        - "--ateapi-client-cert=/run/podidentity.podcert.ate.dev/credential-bundle.pem"
+        # --drain-timeout: derived default. Workload route timeout: default 5m (--route-timeout).
+        # A turn running past the drain route budget (10s) does not survive a shutdown; to keep long
+        # turns, raise --drain-timeout and terminationGracePeriodSeconds together.
+        - "--drain-delay=13s"
+        {{- with $allowed }}
+        - {{ printf "--ingress-allowed-spiffe-ids=%s" (join "," .) | quote }}
+        {{- end }}
+        - --preview=
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          capabilities:
+            drop:
+            - ALL
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_UID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.uid
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: k8s.namespace.name=$(POD_NAMESPACE),k8s.pod.name=$(POD_NAME),k8s.pod.uid=$(POD_UID),service.instance.id=$(POD_UID)
+        # Also Envoy spans: --otlp-collector-address defaults to $OTEL_EXPORTER_OTLP_ENDPOINT.
+        envFrom:
+        - configMapRef:
+            name: ate-otel-config
+        # xDS (18000) and /statusz (4040) bind 127.0.0.1: no container ports.
+        ports:
+        - name: extproc
+          containerPort: 50051
+        - name: metrics
+          containerPort: 9090
+        - name: health
+          containerPort: 9091
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: health
+          initialDelaySeconds: 5
+          periodSeconds: 2
+          failureThreshold: 3
+        # /healthz stays 200 while draining; /readyz turns 503.
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: health
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        volumeMounts:
+        # Client identity toward ateapi.
+        - name: "podidentity"
+          mountPath: "/run/podidentity.podcert.ate.dev"
+        # Verifies the ateapi servicedns serving certificate.
+        - name: "servicedns-ca"
+          mountPath: "/run/servicedns-ca"
+        # Shared with envoy: the router writes the drain-complete marker here.
+        - name: "drain-signal"
+          mountPath: "/var/run/atenet"
+      - name: envoy
+        image: {{ include "krci-substrate.image" (dict "image" .Values.router.envoy.image "path" "router.envoy.image") }}
+        command:
+        - "/usr/local/bin/envoy"
+        - "-c"
+        - "/etc/envoy/envoy.yaml"
+        # The image sets no USER: runAsNonRoot needs a numeric UID.
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 65532
+          capabilities:
+            drop:
+            - ALL
+        # Envoy stops after the router drain: polls the drain-complete marker, or stops at
+        # terminationGracePeriodSeconds.
+        lifecycle:
+          preStop:
+            exec:
+              command: ["sh", "-c", "while [ ! -f /var/run/atenet/drain-complete ]; do sleep 0.5; done"]
+        ports:
+        - name: https
+          containerPort: 8443
+        - name: connect-tls
+          containerPort: 8444
+        # Filtered admin view: GET /stats/prometheus and /ready. Admin port 9901: loopback only.
+        - name: envoy-metrics
+          containerPort: 9902
+        # Keeps the pod out of the Service until Envoy is ready.
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: envoy-metrics
+          periodSeconds: 2
+        volumeMounts:
+        - name: envoy-config
+          mountPath: /etc/envoy
+        - name: "servicedns"
+          mountPath: "/run/servicedns.podcert.ate.dev"
+        # Client certificate and trust bundle for CONNECT tunnels to the worker atunnel on :8443.
+        # Identity spiffe://cluster.local/ns/ate-system/sa/atenet-router; atunnel allows it.
+        - name: "podidentity"
+          mountPath: "/run/podidentity.podcert.ate.dev"
+        - name: "drain-signal"
+          mountPath: "/var/run/atenet"
+          readOnly: true
+      volumes:
+      - name: envoy-config
+        configMap:
+          name: atenet-router-envoy-config
+      # Shutdown handshake between the router and the envoy preStop hook.
+      - name: "drain-signal"
+        emptyDir: {}
+      - name: "servicedns"
+        projected:
+          sources:
+          - podCertificate:
+              signerName: servicedns.podcert.ate.dev/identity
+              keyType: ECDSAP256
+              credentialBundlePath: credential-bundle.pem
+      - name: "podidentity"
+        projected:
+          sources:
+          - podCertificate:
+              signerName: podidentity.podcert.ate.dev/identity
+              keyType: ECDSAP256
+              credentialBundlePath: credential-bundle.pem
+          - clusterTrustBundle:
+              signerName: podidentity.podcert.ate.dev/identity
+              labelSelector:
+                matchLabels:
+                  podcert.ate.dev/canarying: live
+              path: trust-bundle.pem
+      - name: "servicedns-ca"
+        projected:
+          sources:
+          - clusterTrustBundle:
+              signerName: servicedns.podcert.ate.dev/identity
+              labelSelector:
+                matchLabels:
+                  podcert.ate.dev/canarying: live
+              path: trust-bundle.pem

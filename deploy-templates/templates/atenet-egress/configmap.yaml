@@ -1,0 +1,72 @@
+# Upstream appVersion: the ConfigMap of manifests/ate-install/atenet-egress.yaml.
+# envoy.yaml: files/atenet-egress/envoy.yaml. Envoy reads it at start only: annotation checksum/config.
+# Chart changes: with egress.upstreamCA, the upstream TLS clusters trust the bundle of
+# templates/atenet-egress/deployment.yaml instead of the image system roots.
+{{- $envoy := .Files.Get "files/atenet-egress/envoy.yaml" }}
+{{- if .Values.egress.upstreamCA }}
+{{- $systemRootsCA := "filename: /etc/ssl/certs/ca-certificates.crt" }}
+{{- if ne (len (splitList $systemRootsCA $envoy)) 3 }}
+{{- fail "files/atenet-egress/envoy.yaml: expected 2 upstream trusted_ca entries" }}
+{{- end }}
+{{- $envoy = replace $systemRootsCA "filename: /run/egress-upstream-trust/ca-certificates.crt" $envoy }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: atenet-egress
+  namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "control-dataplane" | nindent 4 }}
+data:
+  envoy.yaml: |
+    {{- trimSuffix "\n" $envoy | nindent 4 }}
+  # Gateway serving certificate (servicedns). The kubelet rotates the projected volume by its ..data
+  # symlink; the watch makes Envoy re-read the bundle (certificate and key in one file).
+  sds-servicedns-cert.yaml: |
+    resources:
+    - "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.Secret
+      name: servicedns_serving_cert
+      tls_certificate:
+        certificate_chain: { filename: /run/servicedns.podcert.ate.dev/credential-bundle.pem }
+        private_key: { filename: /run/servicedns.podcert.ate.dev/credential-bundle.pem }
+        watched_directory: { path: /run/servicedns.podcert.ate.dev }
+  # Actor identity CA roots of the egress listener. Secret actor-id-ca-certs rotates the same way.
+  sds-actor-identity-validation.yaml: |
+    resources:
+    - "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.Secret
+      name: actor_identity_validation_context
+      validation_context:
+        trusted_ca: { filename: /run/actor-id-ca-certs/ca.crt }
+        watched_directory: { path: /run/actor-id-ca-certs }
+  # The next two: only the additional ext_proc cluster of ate-setup
+  # --experimental-additional-egress-extproc-service reads them. Unreferenced here.
+  sds-podidentity-cert.yaml: |
+    resources:
+    - "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.Secret
+      name: podidentity_client_cert
+      tls_certificate:
+        certificate_chain: { filename: /run/podidentity.podcert.ate.dev/credential-bundle.pem }
+        private_key: { filename: /run/podidentity.podcert.ate.dev/credential-bundle.pem }
+        watched_directory: { path: /run/podidentity.podcert.ate.dev }
+  sds-servicedns-validation.yaml: |
+    resources:
+    - "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.Secret
+      name: servicedns_validation_context
+      validation_context:
+        trusted_ca: { filename: /run/servicedns.podcert.ate.dev/trust-bundle.pem }
+        watched_directory: { path: /run/servicedns.podcert.ate.dev }
+{{- with .Values.egress.upstreamCA }}
+---
+# Chart object, egress.upstreamCA set: CA certificates the egress gateway trusts for upstream TLS,
+# in addition to the image system roots.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: atenet-egress-upstream-ca
+  namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "control-dataplane" | nindent 4 }}
+data:
+  ca.crt: |
+    {{- trimSuffix "\n" . | nindent 4 }}
+{{- end }}

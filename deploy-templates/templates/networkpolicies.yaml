@@ -2,14 +2,15 @@
 # Default deny, then additive allow rules. Ports no policy admits (router /statusz 4040, postgres and atelet
 # from anything but ate-api-server) are reachable only through `kubectl port-forward`.
 # Enforced only by network plugins that implement NetworkPolicy.
-# Policies of workloads outside this chart (atenet-egress, k8s-credential-provider) are included so the
-# default deny never lands without its allow rules; a policy whose pods do not exist selects nothing.
+# Policy k8s-credential-provider: templates/k8s-credential-provider/networkpolicy.yaml.
 # Named ports cover both atenet dataplanes: envoy serves the egress gateway on 443, agentgateway on 8443, both "https".
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: default-deny-ingress
   namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "base" | nindent 4 }}
 spec:
   podSelector: {}
   policyTypes:
@@ -22,6 +23,8 @@ kind: NetworkPolicy
 metadata:
   name: ate-api-server
   namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "base" | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
@@ -64,6 +67,8 @@ kind: NetworkPolicy
 metadata:
   name: postgres
   namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "base" | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
@@ -85,6 +90,8 @@ kind: NetworkPolicy
 metadata:
   name: atelet
   namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "base" | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
@@ -107,6 +114,8 @@ kind: NetworkPolicy
 metadata:
   name: atenet-router
   namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "base" | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
@@ -126,6 +135,8 @@ kind: NetworkPolicy
 metadata:
   name: ate-idp-server
   namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "base" | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
@@ -143,6 +154,8 @@ kind: NetworkPolicy
 metadata:
   name: atenet-egress
   namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "base" | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
@@ -168,6 +181,8 @@ kind: NetworkPolicy
 metadata:
   name: ate-system-observability
   namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "base" | nindent 4 }}
 spec:
   podSelector:
     matchExpressions:

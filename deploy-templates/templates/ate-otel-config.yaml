@@ -8,6 +8,8 @@ kind: ConfigMap
 metadata:
   name: ate-otel-config
   namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "base" | nindent 4 }}
 data:
   OTEL_TRACES_EXPORTER: none
   OTEL_METRICS_EXPORTER: none

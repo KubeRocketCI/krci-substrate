@@ -4,6 +4,8 @@ kind: ConfigMap
 metadata:
   name: postgres-config
   namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "postgres-atelet" | nindent 4 }}
 data:
   postgresql.conf: |
     listen_addresses = '*'
@@ -68,6 +70,8 @@ kind: ConfigMap
 metadata:
   name: postgres-setup
   namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "postgres-atelet" | nindent 4 }}
 data:
   substrate-setup.sh: |
     # Sourced by docker-entrypoint.sh against its socket-only init server.

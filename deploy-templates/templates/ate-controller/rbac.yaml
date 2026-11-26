@@ -4,6 +4,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: ate-controller
+  annotations:
+    {{- include "krci-substrate.syncWave" "control-dataplane" | nindent 4 }}
 rules:
 - apiGroups:
   - ""
@@ -119,6 +121,8 @@ kind: Role
 metadata:
   name: ate-controller
   namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "control-dataplane" | nindent 4 }}
 rules:
 - apiGroups:
   - ""
@@ -143,6 +147,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: ate-controller
+  annotations:
+    {{- include "krci-substrate.syncWave" "control-dataplane" | nindent 4 }}
 subjects:
 - kind: ServiceAccount
   name: ate-controller
@@ -157,6 +163,8 @@ kind: RoleBinding
 metadata:
   name: ate-controller
   namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "control-dataplane" | nindent 4 }}
 subjects:
 - kind: ServiceAccount
   name: ate-controller

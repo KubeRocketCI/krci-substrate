@@ -15,9 +15,12 @@ validate-docs: helm-docs ## Fail if the generated chart docs are out of date.
 	@git diff -s --exit-code $(CHART_DIR)/README.md || (echo "Run 'make helm-docs' to address the issue." && git diff && exit 1)
 
 .PHONY: helm-lint
-helm-lint: ## Run helm lint and render the chart with the values in deploy-templates/ci/.
-	helm lint $(CHART_DIR) --values $(CHART_DIR)/ci/s3-values.yaml
-	helm template krci-substrate $(CHART_DIR) --include-crds --values $(CHART_DIR)/ci/s3-values.yaml >/dev/null
+helm-lint: ## Run helm lint and render the chart with each values file in deploy-templates/ci/.
+	@set -e; for values in $(CHART_DIR)/ci/*-values.yaml; do \
+		echo "$$values"; \
+		helm lint $(CHART_DIR) --values "$$values"; \
+		helm template krci-substrate $(CHART_DIR) --include-crds --values "$$values" >/dev/null; \
+	done
 
 .PHONY: ct-lint
 ct-lint: ## Run chart-testing lint against the main branch (needs ct, yamllint, yamale).

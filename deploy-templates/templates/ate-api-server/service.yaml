@@ -4,6 +4,8 @@ kind: Service
 metadata:
   name: api
   namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "control-dataplane" | nindent 4 }}
 spec:
   # Headless: one A record per ready pod, for client-side gRPC load balancing.
   clusterIP: None

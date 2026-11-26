@@ -138,7 +138,7 @@ spec:
               echo "timed out waiting for rustfs"
               exit 1
 ---
-# Admits the S3 API from ate-api-server, atelet and the bucket-init Job; the console is not admitted.
+# Admits the S3 API from ate-api-server, atelet, the bucket-init Job and the smoke S3 client pod; the console is not admitted.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -159,6 +159,7 @@ spec:
                 values:
                   - ate-api-server
                   - atelet
+                  - rustfs-smoke-client
         - podSelector:
             matchLabels:
               batch.kubernetes.io/job-name: rustfs-bucket-init

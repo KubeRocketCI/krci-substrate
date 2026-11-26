@@ -1,0 +1,28 @@
+# Lint values (ct lint, make helm-lint): the required S3 settings, a credentials Secret, and every optional
+# dataplane value set.
+snapshots:
+  s3:
+    bucket: example-snapshots
+    region: eu-central-1
+    endpoint: http://s3.example.svc:9000
+    usePathStyle: true
+    credentialsSecret: example-s3-credentials
+apiServer:
+  serviceAccountIssuer: https://kubernetes.default.svc.cluster.local
+atelet:
+  imageCredentialProvider:
+    enabled: false
+router:
+  ingressAllowedSpiffeIds:
+    - spiffe://cluster.local/ns/ate-system/sa/atenet-client
+egress:
+  # Placeholder body: lint renders it, nothing parses it.
+  upstreamCA: |
+    -----BEGIN CERTIFICATE-----
+    MIIBexample
+    -----END CERTIFICATE-----
+credentialProvider:
+  namespacePolicies:
+    - atespace: team-a
+      allowedNamespaces:
+        - team-a-secrets
