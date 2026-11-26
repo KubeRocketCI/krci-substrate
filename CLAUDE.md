@@ -11,7 +11,10 @@ make helm-docs      # deploy-templates/README.md from README.md.gotmpl
 make validate-docs  # fail when README.md is stale
 make helm-lint      # helm lint + helm template --include-crds
 make ct-lint        # chart-testing lint against main (ct, yamllint, yamale on PATH)
+make e2e-kind       # kind test bed: install on kind-krci-substrate, then smoke
 ```
+
+Kind test bed (`hack/e2e-kind.sh`): `make e2e-kind-cluster-create` / `e2e-kind-cluster-delete` need kind and Docker; `make e2e-kind`, `e2e-kind-install`, `e2e-kind-smoke` need kubectl, helm and jq. Kubeconfig: `.cache/kind-krci-substrate.kubeconfig` only. `HELM_CA_FILE`: optional CA bundle for the chart registries.
 
 ## Layout
 
@@ -20,6 +23,8 @@ deploy-templates/            the chart; appVersion = upstream release tag
 deploy-templates/crds/       upstream manifests/ate-install/generated/ate.dev_*.yaml, byte for byte
 deploy-templates/templates/  objects of upstream manifests, unchanged
 ct-configs/                  chart-testing and yamllint config
+e2e/kind/                    kind test bed: cluster config, dependency values, fixtures; not part of the chart
+hack/e2e-kind.sh             kind test bed driver; versions of cert-manager and ESO at the top
 .github/workflows/pr.yaml    commit title, helm-docs, chart-testing lint
 ```
 

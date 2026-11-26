@@ -4,7 +4,7 @@ CHART_DIR := deploy-templates
 
 .PHONY: help
 help: ## Show this help.
-	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*##/ {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  %-25s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 .PHONY: helm-docs
 helm-docs: helmdocs ## Generate deploy-templates/README.md from README.md.gotmpl.
@@ -23,6 +23,27 @@ helm-lint: ## Run helm lint and render the chart.
 ct-lint: ## Run chart-testing lint against the main branch (needs ct, yamllint, yamale).
 	ct lint --target-branch main --charts $(CHART_DIR)/ \
 		--config ct-configs/ct.yaml --lint-conf ct-configs/lintconf.yaml
+
+E2E_KIND := bash hack/e2e-kind.sh
+
+.PHONY: e2e-kind-cluster-create
+e2e-kind-cluster-create: ## Create the kind cluster krci-substrate and set proxy ARP on its nodes (needs kind and Docker).
+	$(E2E_KIND) cluster-create
+
+.PHONY: e2e-kind-cluster-delete
+e2e-kind-cluster-delete: ## Delete the kind cluster krci-substrate (needs kind and Docker).
+	$(E2E_KIND) cluster-delete
+
+.PHONY: e2e-kind-install
+e2e-kind-install: ## Install cert-manager, ESO, the chart and RustFS on kind-krci-substrate.
+	$(E2E_KIND) install
+
+.PHONY: e2e-kind-smoke
+e2e-kind-smoke: ## Run the smoke checks on kind-krci-substrate.
+	$(E2E_KIND) smoke
+
+.PHONY: e2e-kind
+e2e-kind: e2e-kind-install e2e-kind-smoke ## Install on kind-krci-substrate, then run the smoke checks.
 
 ## Location to install dependencies to
 LOCALBIN ?= $(shell pwd)/bin

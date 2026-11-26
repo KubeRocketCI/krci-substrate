@@ -1,0 +1,5 @@
+# cert-manager values for the kind test bed.
+fullnameOverride: cert-manager
+crds:
+  enabled: true
+  keep: true
