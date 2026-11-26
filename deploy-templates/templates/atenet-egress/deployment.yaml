@@ -1,0 +1,299 @@
+# Upstream appVersion: the Deployment of manifests/ate-install/atenet-egress.yaml.
+# Reference install changes (ate-setup, --credential-provider={"name":"k8s.io"}): release images,
+# --credential-provider-* flags of k8s-credential-provider in place of #ATE_EGRESS_INJECT_FLAGS, --preview=.
+# Chart changes: annotation checksum/config; egress.replicas; with egress.upstreamCA, init container
+# upstream-ca-bundle and the volumes of the upstream trust bundle.
+{{- $upstreamCA := .Values.egress.upstreamCA }}
+{{- if $upstreamCA }}
+{{- if not (contains "-----BEGIN CERTIFICATE-----" $upstreamCA) }}
+{{- fail "egress.upstreamCA must hold PEM CERTIFICATE blocks" }}
+{{- end }}
+{{- if contains "PRIVATE KEY" $upstreamCA }}
+{{- fail "egress.upstreamCA must hold certificates only, no private key" }}
+{{- end }}
+{{- end }}
+{{- $envoyImage := include "krci-substrate.image" (dict "image" .Values.egress.envoy.image "path" "egress.envoy.image") }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: atenet-egress
+  namespace: ate-system
+  labels:
+    app: atenet-egress
+  annotations:
+    {{- include "krci-substrate.syncWave" "control-dataplane" | nindent 4 }}
+spec:
+  replicas: {{ .Values.egress.replicas }}
+  selector:
+    matchLabels:
+      app: atenet-egress
+  template:
+    metadata:
+      labels:
+        app: atenet-egress
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/atenet-egress/configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: atenet-egress
+      # sdsmint and envoy share a UID: sdsmint creates the SDS socket with mode 0600.
+      securityContext:
+        runAsUser: 65532
+        runAsGroup: 65532
+        runAsNonRoot: true
+        fsGroup: 65532
+        # Non-root envoy binds :443.
+        sysctls:
+        - name: net.ipv4.ip_unprivileged_port_start
+          value: "0"
+      terminationGracePeriodSeconds: 60
+      initContainers:
+      {{- if $upstreamCA }}
+      # Upstream trust bundle: image system roots, then egress.upstreamCA.
+      - name: upstream-ca-bundle
+        image: {{ $envoyImage }}
+        command:
+        - sh
+        - -c
+        - cat /etc/ssl/certs/ca-certificates.crt /run/egress-upstream-ca/ca.crt > /run/egress-upstream-trust/ca-certificates.crt
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: upstream-ca
+          mountPath: /run/egress-upstream-ca
+          readOnly: true
+        - name: upstream-trust
+          mountPath: /run/egress-upstream-trust
+      {{- end }}
+      # Native sidecar: serves before Envoy loads its config, stops after Envoy.
+      # Same image as ext-proc, own container: the MITM signing key stays off the dataplane.
+      - name: sdsmint
+        image: {{ include "krci-substrate.image" (dict "image" .Values.egress.image "path" "egress.image") }}
+        restartPolicy: Always
+        args:
+        - "sdsmint"
+        - "--uds-path=/var/run/sdsmint/sdsmint.sock"
+        - "--ca-pool-path=/run/ca-state/mitm-pool.json"
+        # Leaf notAfter; the xDS resource TTL is one minute shorter, then Envoy drops the secret and the
+        # next handshake re-mints. Do not raise: without the TTL Envoy serves expired leaves.
+        - "--leaf-cert-ttl=15m"
+        - "--log-level=info"
+        - --preview=
+        env:
+        # Soft heap ceiling below the memory limit.
+        - name: GOMEMLIMIT
+          value: "640MiB"
+        # Scale with the live secret count: ~44,750 B per secret, ~427 MiB at 10,000.
+        # CPU sized for bursts of cold names (~600us per mint); not limited.
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            memory: 768Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        volumeMounts:
+        - name: sdsmint-sock
+          mountPath: /var/run/sdsmint
+        # The MITM CA. Mounted only here.
+        - name: ca-state
+          mountPath: /run/ca-state
+          readOnly: true
+      containers:
+      - name: envoy
+        image: {{ $envoyImage }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 65532
+        args:
+        - -c
+        - /etc/envoy/envoy.yaml
+        - --service-node
+        - atenet-egress
+        - --service-cluster
+        - atenet-egress
+        # Envoy stops after the ext-proc drain: polls the drain-complete marker, or stops at
+        # terminationGracePeriodSeconds.
+        lifecycle:
+          preStop:
+            exec:
+              command: ["sh", "-c", "while [ ! -f /var/run/atenet/drain-complete ]; do sleep 0.5; done"]
+        ports:
+        - name: https
+          containerPort: 443
+        # Filtered admin view: GET /ready and /stats/prometheus. Admin port 15000: loopback only.
+        - name: envoy-metrics
+          containerPort: 15090
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: envoy-metrics
+          periodSeconds: 10
+        startupProbe:
+          failureThreshold: 60
+          httpGet:
+            path: /ready
+            port: envoy-metrics
+          periodSeconds: 1
+        volumeMounts:
+        - name: config
+          mountPath: /etc/envoy
+          readOnly: true
+        - name: servicedns
+          mountPath: /run/servicedns.podcert.ate.dev
+          readOnly: true
+        - name: podidentity
+          mountPath: /run/podidentity.podcert.ate.dev
+          readOnly: true
+        - name: actor-id-ca-certs
+          mountPath: /run/actor-id-ca-certs
+          readOnly: true
+        - name: drain-signal
+          mountPath: /var/run/atenet
+          readOnly: true
+        - name: sdsmint-sock
+          mountPath: /var/run/sdsmint
+        {{- if $upstreamCA }}
+        - name: upstream-trust
+          mountPath: /run/egress-upstream-trust
+          readOnly: true
+        {{- end }}
+      # ext_proc server, --mode=egress: egress handler only, no xDS, no Kubernetes access.
+      # Envoy calls it on localhost to authenticate the actor on every CONNECT.
+      - name: ext-proc
+        image: {{ include "krci-substrate.image" (dict "image" .Values.egress.image "path" "egress.image") }}
+        args:
+        - router
+        - --mode=egress
+        - --namespace=ate-system
+        - --port-extproc=50051
+        - --extproc-address=127.0.0.1
+        - --ateapi-address=dns:///api.ate-system.svc:443
+        - --ateapi-ca-file=/run/servicedns.podcert.ate.dev/trust-bundle.pem
+        - --ateapi-client-cert=/run/podidentity.podcert.ate.dev/credential-bundle.pem
+        # Without it every egress CONNECT is denied with 503.
+        - --actor-identity-ca-file=/run/actor-id-ca-certs/ca.crt
+        # Envoy-side tracing off; the ext-proc OTel SDK uses ate-otel-config.
+        - --otlp-collector-address=
+        # Admin listener of the egress Envoy; the flag default 9901 is the router's.
+        - --envoy-admin-address=127.0.0.1:15000
+        # Egress credential injection: k8s-credential-provider. Server name: the SAN of its servicedns certificate.
+        - --credential-provider-name=k8s.io
+        - --credential-provider-address=k8s-credential-provider.ate-system.svc:50051
+        - --credential-provider-server-name=k8s-credential-provider.ate-system.svc
+        - --credential-provider-ca-file=/run/servicedns.podcert.ate.dev/trust-bundle.pem
+        - --credential-provider-client-cert=/run/podidentity.podcert.ate.dev/credential-bundle.pem
+        - --preview=
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_UID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.uid
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: k8s.namespace.name=$(POD_NAMESPACE),k8s.pod.name=$(POD_NAME),k8s.pod.uid=$(POD_UID),service.instance.id=$(POD_UID)
+        envFrom:
+        - configMapRef:
+            name: ate-otel-config
+        ports:
+        - name: extproc
+          containerPort: 50051
+        - name: metrics
+          containerPort: 9090
+        - name: health
+          containerPort: 9091
+        # Health port: the ext_proc server binds loopback.
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: health
+          initialDelaySeconds: 5
+          periodSeconds: 2
+          failureThreshold: 3
+        volumeMounts:
+        - name: servicedns
+          mountPath: /run/servicedns.podcert.ate.dev
+          readOnly: true
+        - name: podidentity
+          mountPath: /run/podidentity.podcert.ate.dev
+          readOnly: true
+        - name: actor-id-ca-certs
+          mountPath: /run/actor-id-ca-certs
+          readOnly: true
+        - name: drain-signal
+          mountPath: /var/run/atenet
+      volumes:
+      - name: config
+        configMap:
+          name: atenet-egress
+      - name: drain-signal
+        emptyDir: {}
+      - name: sdsmint-sock
+        emptyDir: {}
+      - name: servicedns
+        projected:
+          sources:
+          - podCertificate:
+              signerName: servicedns.podcert.ate.dev/identity
+              keyType: ECDSAP256
+              credentialBundlePath: credential-bundle.pem
+          - clusterTrustBundle:
+              signerName: servicedns.podcert.ate.dev/identity
+              labelSelector:
+                matchLabels:
+                  podcert.ate.dev/canarying: live
+              path: trust-bundle.pem
+      - name: podidentity
+        projected:
+          sources:
+          - podCertificate:
+              signerName: podidentity.podcert.ate.dev/identity
+              keyType: ECDSAP256
+              credentialBundlePath: credential-bundle.pem
+          - clusterTrustBundle:
+              signerName: podidentity.podcert.ate.dev/identity
+              labelSelector:
+                matchLabels:
+                  podcert.ate.dev/canarying: live
+              path: trust-bundle.pem
+      - name: actor-id-ca-certs
+        secret:
+          secretName: actor-id-ca-certs
+      - name: ca-state
+        projected:
+          sources:
+          - secret:
+              name: egress-mitm-ca-pool
+              items:
+              - key: pool
+                path: mitm-pool.json
+      {{- if $upstreamCA }}
+      - name: upstream-ca
+        configMap:
+          name: atenet-egress-upstream-ca
+      - name: upstream-trust
+        emptyDir: {}
+      {{- end }}

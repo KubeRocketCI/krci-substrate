@@ -93,7 +93,92 @@ controller:
   # -- Replica count.
   replicas: 1
 
-# Snapshot storage: S3. Every objectstore-plugin sidecar (ate-api-server, and atelet with the dataplane) gets the same S3 environment.
+# DaemonSet atelet: one pod per node.
+atelet:
+  image:
+    # -- Image repository.
+    repository: ghcr.io/agent-substrate/substrate/atelet
+    # -- Image tag.
+    tag: v1.0.1
+    # -- Image digest `sha256:<64 hex>`. Empty: tag only.
+    digest: sha256:f6707957b470d8a8529e65a4ec3eb1ad5182a607b313b6b1628c7fe6c0e5a9e6
+  serviceAccount:
+    # -- ServiceAccount annotations. IRSA: `eks.amazonaws.com/role-arn: arn:aws:iam::<account>:role/<role>`.
+    annotations: {}
+  objectstorePlugin:
+    image:
+      # -- Image repository.
+      repository: ghcr.io/agent-substrate/substrate/objectstore-plugin
+      # -- Image tag.
+      tag: v1.0.1
+      # -- Image digest `sha256:<64 hex>`. Empty: tag only.
+      digest: sha256:311cc9cfb9ee8c344f3ebc3e4d5cafb88468840023b62d1c47c6338ed32b0352
+  # Image pull credentials of atelet: the kubelet credential provider plugin of the node, mounted from the host.
+  imageCredentialProvider:
+    # -- Mount the node credential provider and pass it to atelet. Set false on nodes without one (kind).
+    enabled: true
+    # -- Host directory of the credential provider binaries. Upstream default: GKE. EKS: `/etc/eks/image-credential-provider`.
+    binDir: /home/kubernetes/bin
+    # -- Host file of the kubelet CredentialProviderConfig. Upstream default: GKE. EKS: `/etc/eks/image-credential-provider/config.json`.
+    config: /etc/srv/kubernetes/cri_auth_config.yaml
+
+# atenet-router: the ingress gateway to actors, envoy dataplane.
+router:
+  image:
+    # -- Image repository.
+    repository: ghcr.io/agent-substrate/substrate/atenet
+    # -- Image tag.
+    tag: v1.0.1
+    # -- Image digest `sha256:<64 hex>`. Empty: tag only.
+    digest: sha256:ccfa3265be2f45d5ffa7d86ffbe32fa0976426eb1fe1bb28dffbce451c1ea5d7
+  envoy:
+    image:
+      # -- Image repository.
+      repository: ghcr.io/agent-substrate/substrate/envoy-dataplane
+      # -- Image tag.
+      tag: v1.0.1
+      # -- Image digest `sha256:<64 hex>`. Empty: tag only.
+      digest: sha256:6f59332e4e45da4b1600cf1f0c2104c595d875b661be86b4b8c5b16603ad8191
+  # -- Replica count.
+  replicas: 1
+  # -- SPIFFE IDs of the clients the router lets reach actors. Empty: the router serves no traffic. `kubectl ate proxy actor`: `spiffe://cluster.local/ns/ate-system/sa/atenet-client`.
+  ingressAllowedSpiffeIds: []
+
+# atenet-egress: the egress gateway of actors, envoy dataplane, egress credential injection through k8s-credential-provider.
+egress:
+  image:
+    # -- Image repository, shared by the sdsmint and ext-proc containers.
+    repository: ghcr.io/agent-substrate/substrate/atenet
+    # -- Image tag.
+    tag: v1.0.1
+    # -- Image digest `sha256:<64 hex>`. Empty: tag only.
+    digest: sha256:ccfa3265be2f45d5ffa7d86ffbe32fa0976426eb1fe1bb28dffbce451c1ea5d7
+  envoy:
+    image:
+      # -- Image repository.
+      repository: ghcr.io/agent-substrate/substrate/envoy-dataplane
+      # -- Image tag.
+      tag: v1.0.1
+      # -- Image digest `sha256:<64 hex>`. Empty: tag only.
+      digest: sha256:6f59332e4e45da4b1600cf1f0c2104c595d875b661be86b4b8c5b16603ad8191
+  # -- Replica count.
+  replicas: 1
+  # -- PEM CA certificates the egress gateway trusts for upstream TLS, in addition to the image system roots. Certificates only; a private key fails the render. Empty: system roots only.
+  upstreamCA: ""
+
+# k8s-credential-provider: resolves ate-secret:// URIs of class k8s.io to Kubernetes Secret values for the egress gateway.
+credentialProvider:
+  image:
+    # -- Image repository.
+    repository: ghcr.io/agent-substrate/substrate/kubernetes-secrets
+    # -- Image tag.
+    tag: v1.0.1
+    # -- Image digest `sha256:<64 hex>`. Empty: tag only.
+    digest: sha256:46a2872c624c6e3af98984f1097d2205f012ea6c471516ac5189ceb3adef96e5
+  # -- Namespaces whose Secrets each atespace may resolve: `[{atespace: <name>, allowedNamespaces: [<namespace>]}]`. Default deny: an atespace not listed resolves no Secret. A change restarts the provider.
+  namespacePolicies: []
+
+# Snapshot storage: S3. Every objectstore-plugin sidecar (ate-api-server, atelet) gets the same S3 environment.
 snapshots:
   s3:
     # -- Required. S3 bucket name rules.
@@ -104,5 +189,5 @@ snapshots:
     endpoint: ""
     # -- AWS_S3_USE_PATH_STYLE. Set for MinIO, RustFS and other S3-compatible stores.
     usePathStyle: false
-    # -- Existing Secret in ate-system with keys AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY. Credentials come only from a Secret, never from values. Use only for the kind test bed or an S3-compatible store without workload identity. EKS: leave empty (AWS SDK default credential chain) and give S3 access to ate-system/ate-api-server, and with the dataplane ate-system/atelet, through EKS Pod Identity or IRSA (`<service>.serviceAccount.annotations`).
+    # -- Existing Secret in ate-system with keys AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY. Credentials come only from a Secret, never from values. Use only for the kind test bed or an S3-compatible store without workload identity. EKS: leave empty (AWS SDK default credential chain) and give S3 access to ate-system/ate-api-server and ate-system/atelet through EKS Pod Identity or IRSA (`<service>.serviceAccount.annotations`).
     credentialsSecret: ""

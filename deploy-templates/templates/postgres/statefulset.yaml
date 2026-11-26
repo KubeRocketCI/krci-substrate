@@ -7,6 +7,8 @@ kind: StatefulSet
 metadata:
   name: postgres
   namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "postgres-atelet" | nindent 4 }}
 spec:
   serviceName: postgres
   replicas: 1

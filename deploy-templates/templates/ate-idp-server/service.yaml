@@ -4,6 +4,8 @@ kind: Service
 metadata:
   name: idp
   namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "control-dataplane" | nindent 4 }}
 spec:
   selector:
     app: ate-idp-server

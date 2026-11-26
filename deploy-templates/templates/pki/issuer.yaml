@@ -6,6 +6,8 @@ kind: Issuer
 metadata:
   name: krci-substrate-selfsigned
   namespace: {{ $namespace }}
+  annotations:
+    {{- include "krci-substrate.syncWave" "pki" | nindent 4 }}
 spec:
   selfSigned: {}
 {{- end }}

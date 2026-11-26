@@ -1,0 +1,274 @@
+# Upstream appVersion: the DaemonSet of manifests/ate-install/atelet.yaml.
+# Reference install changes: release images, --preview= (ate-setup).
+# Chart changes: S3 on the objectstore-plugin sidecar (snapshots.s3); image credential provider paths
+# (atelet.imageCredentialProvider).
+{{- $credentialProvider := .Values.atelet.imageCredentialProvider }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: atelet
+  namespace: ate-system
+  labels:
+    app: atelet
+  annotations:
+    {{- include "krci-substrate.syncWave" "postgres-atelet" | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: atelet
+  template:
+    metadata:
+      labels:
+        app: atelet
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+    spec:
+      serviceAccountName: atelet
+      # Not evicted under node pressure: only atelet frees what substrate writes under /var/lib/ate.
+      priorityClassName: system-cluster-critical
+      # Must fit --drain-delay (0s) + --drain-timeout (5m) + force stop and telemetry flush.
+      # Checkpoint and Restore stream multi-GiB snapshots; no cancel mid-upload.
+      terminationGracePeriodSeconds: 330
+      # atelet runs on every node a WorkerPool actor can schedule to: nodes of one sandbox class
+      # (ate.dev/sandboxClass=<class>:NoSchedule) and GKE ComputeClass nodes.
+      tolerations:
+      - key: ate.dev/sandboxClass
+        operator: Exists
+        effect: NoSchedule
+      - key: cloud.google.com/compute-class
+        operator: Exists
+        effect: NoSchedule
+      # Native sidecar: starts before atelet, stops after it, so uploads in flight during the drain finish.
+      # Moves external snapshots between the node and object storage; fetches sandbox assets.
+      # Unix socket in a pod-local emptyDir. atelet starts after the startup probe passes.
+      initContainers:
+      - name: objectstore-plugin
+        image: {{ include "krci-substrate.image" (dict "image" .Values.atelet.objectstorePlugin.image "path" "atelet.objectstorePlugin.image") }}
+        restartPolicy: Always
+        args:
+        - node
+        - --socket=/run/objectstore-plugin/node.sock
+        - --root=/var/lib/ate
+        - --asset-staging-dir=/var/lib/objectstore-plugin/asset-staging
+        # atelet per-asset cap. Bounds the asset-staging volume; a download past the capacity waits.
+        - --asset-staging-capacity=8Gi
+        - --preview=
+        # Unix socket and no shell in the image: the binary checks itself.
+        startupProbe:
+          exec:
+            command:
+            - /ko-app/objectstore-plugin
+            - healthcheck
+            - --socket=/run/objectstore-plugin/node.sock
+          periodSeconds: 2
+          failureThreshold: 30
+        # Root on the /var/lib/ate hostPath, like atelet; no capabilities.
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsUser: 0
+          runAsGroup: 0
+          capabilities:
+            drop:
+            - ALL
+        # Same requests as atelet, no limits: the plugin does the zstd work.
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        env:
+        # Storage settings live on the sidecar, same backend as the ate-api-server sidecar.
+        # atelet exits if ATE_STORAGE_BACKEND is set on it.
+        {{- include "krci-substrate.s3Env" . | nindent 8 }}
+        # GCS credential exchange address and certificate name; S3 does not use it.
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        envFrom:
+        - configMapRef:
+            name: ate-otel-config
+        volumeMounts:
+        # HostToContainer: mounts made under /var/lib/ate after pod start (snapshots disk, CSI volumes).
+        - name: ate-base
+          mountPath: /var/lib/ate
+          mountPropagation: HostToContainer
+        - name: objectstore-plugin
+          mountPath: /run/objectstore-plugin
+        - name: servicedns-ca
+          mountPath: /run/servicedns.podcert.ate.dev
+          readOnly: true
+        # Asset downloads, verified against their sha256 before the copy below /var/lib/ate.
+        # Only this container mounts it.
+        - name: asset-staging
+          mountPath: /var/lib/objectstore-plugin/asset-staging
+      containers:
+      - name: atelet
+        image: {{ include "krci-substrate.image" (dict "image" .Values.atelet.image "path" "atelet.image") }}
+        args:
+        {{- if $credentialProvider.enabled }}
+        # Image pull credentials from the node's kubelet credential provider plugin (mounted below).
+        - --image-credential-provider-config=/run/image-credential-provider/config.yaml
+        - --image-credential-provider-bin-dir=/run/image-credential-provider/bin
+        {{- end }}
+        - --grpc-server-cred-bundle=/run/podidentity.podcert.ate.dev/credential-bundle.pem
+        - --client-ca-certs=/run/podidentity.podcert.ate.dev/trust-bundle.pem
+        - --ateapi-ca-file=/run/servicedns.podcert.ate.dev/trust-bundle.pem
+        # Sum must fit terminationGracePeriodSeconds.
+        - --drain-delay=0s
+        - --drain-timeout=5m
+        - --objectstore-plugin-socket=/run/objectstore-plugin/node.sock
+        - --preview=
+        # Root on the /var/lib/ate hostPath; no mounts, netlink or namespace operations.
+        # Capabilities for files of other uids: CHOWN (layer owners in the image cache), DAC_OVERRIDE
+        # (empty actor-owned durable dirs, manage cached content of other users), FOWNER and FSETID
+        # (mode, mtime, setuid and setgid after chown; hardlinks to files of other users).
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsUser: 0
+          runAsGroup: 0
+          capabilities:
+            drop:
+            - ALL
+            add:
+            - CHOWN
+            - DAC_OVERRIDE
+            - FOWNER
+            - FSETID
+        # Small per-node requests; no limits: usage grows with the hosted actors.
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_UID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.uid
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: k8s.namespace.name=$(POD_NAMESPACE),k8s.pod.name=$(POD_NAME),k8s.pod.uid=$(POD_UID),k8s.node.name=$(NODE_NAME),service.instance.id=$(POD_UID)
+        envFrom:
+        - configMapRef:
+            name: ate-otel-config
+        ports:
+        - name: grpc
+          containerPort: 21998
+        - name: prometheus
+          containerPort: 9090
+          protocol: TCP
+        - name: health
+          containerPort: 9091
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: health
+          initialDelaySeconds: 5
+          periodSeconds: 2
+          failureThreshold: 3
+        # /healthz stays 200 while draining; /readyz turns 503.
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: health
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        volumeMounts:
+        # HostToContainer: mounts made under /var/lib/ate after pod start (snapshots disk, CSI volumes).
+        - name: ate-base
+          mountPath: /var/lib/ate
+          mountPropagation: HostToContainer
+        - name: objectstore-plugin
+          mountPath: /run/objectstore-plugin
+        - name: podidentity
+          mountPath: /run/podidentity.podcert.ate.dev
+        - name: servicedns-ca
+          mountPath: /run/servicedns.podcert.ate.dev
+          readOnly: true
+        - name: kubelet-plugins
+          mountPath: /var/lib/kubelet/plugins
+        - name: device-plugins
+          mountPath: /var/lib/kubelet/device-plugins
+        - name: host-dev
+          mountPath: /host/dev
+          readOnly: true
+        {{- if $credentialProvider.enabled }}
+        - name: image-credential-provider-bin
+          mountPath: /run/image-credential-provider/bin
+          readOnly: true
+        - name: image-credential-provider-config
+          mountPath: /run/image-credential-provider/config.yaml
+          readOnly: true
+        {{- end }}
+      volumes:
+      - name: objectstore-plugin
+        emptyDir: {}
+      # Bounded by --asset-staging-capacity.
+      - name: asset-staging
+        emptyDir: {}
+      - name: ate-base
+        hostPath:
+          path: /var/lib/ate
+          type: DirectoryOrCreate
+      # CSI driver Unix sockets.
+      - name: kubelet-plugins
+        hostPath:
+          path: /var/lib/kubelet/plugins
+          type: DirectoryOrCreate
+      # Device plugin registration with the kubelet: host devices (/dev/kvm) as extended resources.
+      - name: device-plugins
+        hostPath:
+          path: /var/lib/kubelet/device-plugins
+          type: DirectoryOrCreate
+      # Device detection only; the cgroup device filter of atelet denies opening them.
+      - name: host-dev
+        hostPath:
+          path: /dev
+          type: Directory
+      {{- if $credentialProvider.enabled }}
+      # The kubelet credential provider bin directory and config of the node distribution.
+      - name: image-credential-provider-bin
+        hostPath:
+          path: {{ required "atelet.imageCredentialProvider.binDir is required" $credentialProvider.binDir | quote }}
+          type: DirectoryOrCreate
+      - name: image-credential-provider-config
+        hostPath:
+          path: {{ required "atelet.imageCredentialProvider.config is required" $credentialProvider.config | quote }}
+          type: FileOrCreate
+      {{- end }}
+      # mTLS with ate-api-server: SPIFFE certificate (atelet has no Service); the trust bundle
+      # verifies the ate-api-server client certificate.
+      - name: podidentity
+        projected:
+          sources:
+          - podCertificate:
+              signerName: podidentity.podcert.ate.dev/identity
+              keyType: ECDSAP256
+              credentialBundlePath: credential-bundle.pem
+          - clusterTrustBundle:
+              signerName: podidentity.podcert.ate.dev/identity
+              labelSelector:
+                matchLabels:
+                  podcert.ate.dev/canarying: live
+              path: trust-bundle.pem
+      - name: servicedns-ca
+        projected:
+          sources:
+          - clusterTrustBundle:
+              signerName: servicedns.podcert.ate.dev/identity
+              labelSelector:
+                matchLabels:
+                  podcert.ate.dev/canarying: live
+              path: trust-bundle.pem

@@ -7,6 +7,8 @@ metadata:
   namespace: podcertificate-controller-system
   labels:
     app: podcertificate-controller
+  annotations:
+    {{- include "krci-substrate.syncWave" "pki" | nindent 4 }}
 spec:
   replicas: {{ .Values.podcertificateController.replicas }}
   selector:

@@ -1,0 +1,17 @@
+# Upstream appVersion: the Service of manifests/egress-credential-injection/k8s-credential-provider.yaml.
+apiVersion: v1
+kind: Service
+metadata:
+  name: k8s-credential-provider
+  namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "control-dataplane" | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app: k8s-credential-provider
+  ports:
+  - name: grpc
+    port: 50051
+    targetPort: grpc
+    protocol: TCP

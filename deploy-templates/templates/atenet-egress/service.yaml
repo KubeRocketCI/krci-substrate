@@ -1,0 +1,18 @@
+# Upstream appVersion: the Service of manifests/ate-install/atenet-egress.yaml.
+apiVersion: v1
+kind: Service
+metadata:
+  name: atenet-egress
+  namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "control-dataplane" | nindent 4 }}
+spec:
+  type: ClusterIP
+  ipFamilyPolicy: PreferDualStack
+  selector:
+    app: atenet-egress
+  ports:
+  - name: https
+    port: 443
+    targetPort: https
+    protocol: TCP

@@ -5,6 +5,8 @@ apiVersion: apps/v1
 metadata:
   name: ate-controller
   namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "control-dataplane" | nindent 4 }}
 spec:
   replicas: {{ .Values.controller.replicas }}
   selector:

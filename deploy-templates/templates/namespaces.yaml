@@ -3,9 +3,13 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "base" | nindent 4 }}
 ---
 # Upstream appVersion: the Namespace of manifests/ate-install/pod-certificate-controller.yaml.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: podcertificate-controller-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "base" | nindent 4 }}

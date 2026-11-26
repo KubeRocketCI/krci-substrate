@@ -19,6 +19,8 @@ kind: ConfigMap
 metadata:
   name: ate-api-server-envvars
   namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "control-dataplane" | nindent 4 }}
 data:
   ATE_API_ACTOR_JWT_ISSUER: https://idp.ate-system.svc
   ATE_API_POSTGRES_OWNER_ROLE: substrate_owner
@@ -33,6 +35,8 @@ kind: Secret
 metadata:
   name: ate-api-server-secret-envvars
   namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "control-dataplane" | nindent 4 }}
 type: Opaque
 data:
   {{- range $key, $user := dict "ATE_API_POSTGRES_READ_WRITE_CONNECTION_STRING" "substrate_readwrite_user" "ATE_API_POSTGRES_OWNER_CONNECTION_STRING" "substrate_owner_user" }}
@@ -47,6 +51,8 @@ kind: ConfigMap
 metadata:
   name: ate-api-config
   namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "control-dataplane" | nindent 4 }}
 data:
   apiconfig.textproto: |
     logging: {
@@ -60,6 +66,8 @@ kind: ConfigMap
 metadata:
   name: ate-api-authentication
   namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "control-dataplane" | nindent 4 }}
 data:
   authentication.yaml: |-
     jwtProviders:

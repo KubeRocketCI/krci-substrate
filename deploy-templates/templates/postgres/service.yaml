@@ -4,6 +4,8 @@ kind: Service
 metadata:
   name: postgres
   namespace: ate-system
+  annotations:
+    {{- include "krci-substrate.syncWave" "postgres-atelet" | nindent 4 }}
 spec:
   clusterIP: None
   selector:

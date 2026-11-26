@@ -1,0 +1,22 @@
+# Smoke fixture: ActorTemplate (Substrate API, protojson form) of the smoke actor, in atespace krci-substrate-smoke.
+# Shape: upstream appVersion demos/counter/counter-template.yaml.tmpl.
+# traefik/whoami: multi-arch HTTP server on port 80, answers every path with 200; pinned by digest.
+metadata:
+  atespace: krci-substrate-smoke
+  name: smoke
+workerSelector:
+  matchLabels:
+    workload: smoke
+containers:
+- name: whoami
+  image: docker.io/traefik/whoami:v1.11.0@sha256:200689790a0a0ea48ca45992e0450bc26ccab5307375b41c84dfc4f2475937ab
+  wakeupProbe:
+    httpGet:
+      path: /
+      port: 80
+resources:
+  limits:
+    cpuMillicores: 500
+    memoryBytes: 268435456 # 256Mi
+snapshotConfig:
+  preferredFidelity: SNAPSHOT_FIDELITY_MEMORY
