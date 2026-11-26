@@ -103,6 +103,11 @@ namespace_active() { [ "$(k get namespace "$1" -o jsonpath='{.status.phase}')" =
 crd_established() {
   [ "$(k get crd "$1" -o jsonpath='{.status.conditions[?(@.type=="Established")].status}')" = "True" ]
 }
+secret_exists() { k --namespace "$1" wait --for=create secret "$2" --timeout 2m; }
+trust_bundle_published() {
+  k wait --for=create clustertrustbundle "$1" --timeout 2m >/dev/null
+  k get clustertrustbundle "$1" -o jsonpath='{.spec.trustBundle}' | grep -q -- '-----BEGIN CERTIFICATE-----'
+}
 
 smoke() {
   check "cluster ${CONTEXT} reachable" k version --request-timeout=10s
@@ -111,6 +116,22 @@ smoke() {
   check "crd workerpools.ate.dev" crd_established workerpools.ate.dev
   check "crd sandboxconfigs.ate.dev" crd_established sandboxconfigs.ate.dev
   check "crd csidriverconfigs.ate.dev" crd_established csidriverconfigs.ate.dev
+
+  local secret
+  for secret in service-dns-ca-pool pod-identity-ca-pool postgres-ca-pool; do
+    check "secret podcertificate-controller-system/${secret}" secret_exists podcertificate-controller-system "${secret}"
+  done
+  for secret in actor-id-ca-pool actor-id-ca-certs actor-id-jwt-pool egress-mitm-ca-pool; do
+    check "secret ate-system/${secret}" secret_exists ate-system "${secret}"
+  done
+  check "deployment podcertificate-controller available" \
+    k --namespace podcertificate-controller-system wait --for=condition=Available deployment/podcertificate-controller --timeout 5m
+
+  local bundle
+  for bundle in servicedns podidentity postgres; do
+    check "clustertrustbundle ${bundle}.podcert.ate.dev:identity:primary-bundle" \
+      trust_bundle_published "${bundle}.podcert.ate.dev:identity:primary-bundle"
+  done
 }
 
 case "${1:-}" in

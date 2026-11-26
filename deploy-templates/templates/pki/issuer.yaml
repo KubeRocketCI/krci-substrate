@@ -1,0 +1,11 @@
+{{- $pki := include "krci-substrate.pools" . | fromYaml }}
+{{- range $namespace := $pki.namespaces }}
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: krci-substrate-selfsigned
+  namespace: {{ $namespace }}
+spec:
+  selfSigned: {}
+{{- end }}

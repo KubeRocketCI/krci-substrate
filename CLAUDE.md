@@ -21,7 +21,9 @@ Kind test bed (`hack/e2e-kind.sh`): `make e2e-kind-cluster-create` / `e2e-kind-c
 ```
 deploy-templates/            the chart; appVersion = upstream release tag
 deploy-templates/crds/       upstream manifests/ate-install/generated/ate.dev_*.yaml, byte for byte
-deploy-templates/templates/  objects of upstream manifests, unchanged
+deploy-templates/templates/  one directory per component, one file per kind group (serviceaccount, rbac, deployment);
+                             objects of upstream manifests as the reference install has them
+deploy-templates/templates/pki/  cert-manager and ESO objects of the pool Secrets (ADR-0001); pool list in _pools.tpl
 ct-configs/                  chart-testing and yamllint config
 e2e/kind/                    kind test bed: cluster config, dependency values, fixtures; not part of the chart
 hack/e2e-kind.sh             kind test bed driver; versions of cert-manager and ESO at the top

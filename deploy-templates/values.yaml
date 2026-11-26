@@ -1,2 +1,18 @@
-# The chart renders the upstream namespaces and CRDs only; no value changes them.
-{}
+images:
+  podcertcontroller:
+    # -- Image repository of podcertificate-controller.
+    repository: ghcr.io/agent-substrate/substrate/podcertcontroller
+    # -- Image tag. Bump it with appVersion.
+    tag: v1.0.1
+    # -- Image digest (sha256:...) of the tag. Bump it with appVersion. Empty: tag only.
+    digest: sha256:46aa01a624053c23080da41ea37937afc5b544cecf77088ab2196b4ffb734b4f
+
+pki:
+  certManager:
+    # -- Lifetime of each CA certificate (upstream: 365 days).
+    duration: 8760h
+    # -- Renewal lead time before CA certificate expiry. Renewal keeps the private key.
+    renewBefore: 720h
+  externalSecrets:
+    # -- Interval at which ESO re-reads CA certificate Secrets into pool Secrets.
+    refreshInterval: 1h
