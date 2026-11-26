@@ -15,6 +15,8 @@ permissions:
 
 env:
   GOLANG_VERSION: '1.27'
+  # Kubernetes version of e2e/kind/cluster.yaml.
+  KUBECTL_VERSION: 'v1.37.0'
 
 jobs:
 
@@ -53,12 +55,30 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      # helm-docs is installed with go install; the Makefile pins its version.
+      - name: Restore tools
+        id: tools
+        uses: actions/cache/restore@v6
+        with:
+          path: bin
+          key: helm-docs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Makefile') }}
+
       - name: Set up Go
+        if: steps.tools.outputs.cache-hit != 'true'
         uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GOLANG_VERSION }}
           check-latest: true
+          cache: false
+
+      - name: Install tools
+        run: make helmdocs
+
+      - name: Save tools
+        if: steps.tools.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: bin
+          key: ${{ steps.tools.outputs.cache-primary-key }}
 
       - name: Validate chart docs
         run: make validate-docs
@@ -94,3 +114,86 @@ jobs:
             --charts "${CHART_DIR}/" \
             --config "${CT_CONFIGS_DIR}/${CT_FILE_PATH}" \
             --lint-conf "${CT_CONFIGS_DIR}/${LINTCONF_FILE_PATH}"
+
+  chainsaw:
+    needs: [chart-testing]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      KUBECONFIG_FILE: .cache/kind-krci-substrate.kubeconfig
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Restore tools
+        id: tools
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            bin
+            .cache/bin
+          key: e2e-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Makefile', 'hack/e2e-kind.sh') }}
+
+      - name: Set up Go
+        if: steps.tools.outputs.cache-hit != 'true'
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GOLANG_VERSION }}
+          check-latest: true
+          cache: false
+
+      - name: Install tools
+        run: make kind chainsaw kubectl-ate
+
+      - name: Save tools
+        if: steps.tools.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            bin
+            .cache/bin
+          key: ${{ steps.tools.outputs.cache-primary-key }}
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: ${{ env.KUBECTL_VERSION }}
+
+      - name: Create kind cluster
+        run: make e2e-kind-cluster-create
+
+      - name: Install the chart and dependencies
+        run: make e2e-kind-install
+
+      - name: Run Chainsaw tests
+        run: make e2e-kind-smoke
+
+      - name: Chainsaw report
+        if: always()
+        uses: mikepenz/action-junit-report@v6
+        with:
+          report_paths: .cache/chainsaw-smoke.xml
+          check_name: Chainsaw tests
+          annotate_only: true
+          detailed_summary: true
+          include_passed: true
+          include_time_in_summary: true
+
+      - name: Dump cluster state
+        if: failure()
+        run: |
+          k() { kubectl --kubeconfig "${KUBECONFIG_FILE}" "$@"; }
+          df -h || true
+          k describe nodes || true
+          k get pods -A -o wide || true
+          k get events -A --sort-by=.lastTimestamp || true
+          for ns in ate-system podcertificate-controller-system; do
+            for pod in $(k -n "${ns}" get pods -o name 2>/dev/null); do
+              echo "::group::${ns}/${pod}"
+              k -n "${ns}" logs "${pod}" --all-containers --tail=200 || true
+              echo "::endgroup::"
+            done
+          done

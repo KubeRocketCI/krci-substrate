@@ -12,7 +12,6 @@ spec:
   sandboxClass: gvisor
   defaultVersion: v7
   versions:
-  # gVisor release 20261026.0.
   - name: v6
     state: Enabled
     assets:
@@ -24,7 +23,6 @@ spec:
         gvisor:
           url: "gs://gvisor/releases/release/20261026.0/aarch64/gvisor.tar.zstd"
           sha256: "6257e49955f13e6caceb2c4181c5dc5406c460e805940c944e67ad65553f5b02"
-  # gVisor release 20261102.0.
   - name: v7
     state: Enabled
     assets:

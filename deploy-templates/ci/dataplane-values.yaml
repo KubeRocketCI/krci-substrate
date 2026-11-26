@@ -1,5 +1,4 @@
-# Lint values (ct lint, make helm-lint): the required S3 settings, a credentials Secret, and every optional
-# dataplane value set.
+# Every optional dataplane value set.
 snapshots:
   s3:
     bucket: example-snapshots

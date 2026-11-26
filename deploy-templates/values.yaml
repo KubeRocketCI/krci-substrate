@@ -22,7 +22,6 @@ pki:
     # -- Interval at which ESO re-reads CA certificate Secrets into pool Secrets.
     refreshInterval: 1h
 
-# Bundled PostgreSQL: StatefulSet postgres, one replica.
 postgres:
   image:
     # -- Image repository, shared by PostgreSQL and the tls-reloader sidecar.
@@ -93,7 +92,6 @@ controller:
   # -- Replica count.
   replicas: 1
 
-# DaemonSet atelet: one pod per node.
 atelet:
   image:
     # -- Image repository.
@@ -183,6 +181,8 @@ snapshots:
   s3:
     # -- Required. S3 bucket name rules.
     bucket: ""
+    # -- Key prefix of the snapshot location `s3://<bucket>/<prefix>/`. Path segments of ASCII letters, digits, `_` and `-`, separated by `/`; not `atespaces`. Objects: `<prefix>/atespaces/...`. Empty: `s3://<bucket>/`, objects `atespaces/...`.
+    prefix: ""
     # -- Required. AWS_REGION.
     region: ""
     # -- AWS_ENDPOINT_URL. Empty: the AWS endpoint of the region.

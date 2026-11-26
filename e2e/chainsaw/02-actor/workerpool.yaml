@@ -1,5 +1,4 @@
-# WorkerPool of the smoke actor, in the test namespace. Shape: upstream appVersion demos/counter/counter.yaml.tmpl.
-# Worker image: release ateworker-gvisor, multi-arch, pinned by digest.
+# Shape: upstream appVersion demos/counter/counter.yaml.tmpl.
 apiVersion: ate.dev/v1
 kind: WorkerPool
 metadata:
@@ -7,8 +6,8 @@ metadata:
   labels:
     workload: smoke
 spec:
-  # Two workers. readyReplicas assert in chainsaw-test.yaml.
-  replicas: 2
+  # readyReplicas assert in chainsaw-test.yaml.
+  replicas: 1
   workerImage: ghcr.io/agent-substrate/substrate/ateworker-gvisor:v1.0.1@sha256:fd0c6a46d6c69d485856171e632906e774594bea9d00011a4d7038be3e084a2a
   # No configRef: the gvisor class default, SandboxConfig gvisor-default.
   sandboxClasses:

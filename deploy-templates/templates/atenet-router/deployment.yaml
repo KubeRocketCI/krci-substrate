@@ -51,7 +51,6 @@ spec:
         - "--status-port=4040"
         - "--port-https=8443"
         - "--envoy-cert-path=/run/servicedns.podcert.ate.dev/credential-bundle.pem"
-        # CONNECT-tunneled ingress (arbitrary ports).
         - "--port-connect-tls=8444"
         # Clients present a certificate of the podidentity trust bundle with an allowed SPIFFE ID
         # (router.ingressAllowedSpiffeIds). No allowed ID: the router serves no traffic.
@@ -116,10 +115,8 @@ spec:
           initialDelaySeconds: 10
           periodSeconds: 10
         volumeMounts:
-        # Client identity toward ateapi.
         - name: "podidentity"
           mountPath: "/run/podidentity.podcert.ate.dev"
-        # Verifies the ateapi servicedns serving certificate.
         - name: "servicedns-ca"
           mountPath: "/run/servicedns-ca"
         # Shared with envoy: the router writes the drain-complete marker here.
@@ -153,7 +150,6 @@ spec:
         # Filtered admin view: GET /stats/prometheus and /ready. Admin port 9901: loopback only.
         - name: envoy-metrics
           containerPort: 9902
-        # Keeps the pod out of the Service until Envoy is ready.
         readinessProbe:
           httpGet:
             path: /ready

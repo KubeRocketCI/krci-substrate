@@ -9,6 +9,15 @@ ate.dev/env-hash of the ate-api-server Deployment is the digest of this file.
 {{- fail "snapshots.s3.bucket: 3-63 characters of lowercase letters, digits, '.' and '-', starting and ending with a letter or digit" -}}
 {{- end -}}
 {{- $location := printf "s3://%s/" $bucket -}}
+{{- with $s3.prefix -}}
+{{- if not (regexMatch "^[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*$" .) -}}
+{{- fail "snapshots.s3.prefix: path segments of ASCII letters, digits, '_' and '-', separated by '/', no leading or trailing '/'" -}}
+{{- end -}}
+{{- if regexMatch "(?i)(^|/)atespaces(/|$)" . -}}
+{{- fail "snapshots.s3.prefix must not contain the path segment 'atespaces'" -}}
+{{- end -}}
+{{- $location = printf "s3://%s/%s/" $bucket . -}}
+{{- end -}}
 {{- $issuer := required "apiServer.serviceAccountIssuer is required" .Values.apiServer.serviceAccountIssuer -}}
 {{- if not (regexMatch "^https://[^/?#\\s]+" $issuer) -}}
 {{- fail "apiServer.serviceAccountIssuer must be an https:// URL with a host" -}}
