@@ -1,0 +1,33 @@
+{{- $pki := include "krci-substrate.pools" . | fromYaml }}
+{{- range $pki.pools }}
+{{- if ne .format "caCerts" }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ .source }}
+  namespace: {{ .namespace }}
+spec:
+  secretName: {{ .source }}
+  commonName: {{ .source }}
+  isCA: {{ ne .format "jwtPool" }}
+  duration: {{ $.Values.pki.certManager.duration }}
+  renewBefore: {{ $.Values.pki.certManager.renewBefore }}
+  privateKey:
+    algorithm: {{ .algorithm }}
+    {{- if eq .algorithm "ECDSA" }}
+    size: 256
+    {{- end }}
+    encoding: PKCS8
+    rotationPolicy: Never
+  usages:
+    - digital signature
+    {{- if ne .format "jwtPool" }}
+    - cert sign
+    {{- end }}
+  issuerRef:
+    group: cert-manager.io
+    kind: Issuer
+    name: krci-substrate-selfsigned
+{{- end }}
+{{- end }}
