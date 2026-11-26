@@ -17,3 +17,13 @@ _Avoid_: golden, baseline, expected manifest
 **Upstream manifest**:
 A file under `manifests/` of upstream; the chart copies its objects unchanged.
 _Avoid_: template (for this), raw YAML
+
+## Testing
+
+**Kind test bed**:
+The kind cluster `krci-substrate` (context `kind-krci-substrate`) with the chart, its dependencies and the fixtures installed by `make e2e-kind`.
+_Avoid_: testbed, sandbox
+
+**Fixture**:
+An object the kind test bed installs that is neither the chart nor a dependency (cert-manager, ESO): the RustFS S3 fixture.
+_Avoid_: mock, stub
