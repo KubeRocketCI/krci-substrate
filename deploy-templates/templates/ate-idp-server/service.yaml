@@ -1,0 +1,14 @@
+# Upstream appVersion: the Service of manifests/ate-install/ate-idp-server.yaml.
+apiVersion: v1
+kind: Service
+metadata:
+  name: idp
+  namespace: ate-system
+spec:
+  selector:
+    app: ate-idp-server
+  ports:
+  - name: https
+    port: 443
+    targetPort: https
+    appProtocol: https

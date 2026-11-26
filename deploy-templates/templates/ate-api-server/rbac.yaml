@@ -1,0 +1,32 @@
+# Upstream appVersion: the ClusterRole and ClusterRoleBinding of manifests/ate-install/ate-api-server.yaml.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ate-api-server
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "watch", "list"]
+# Distinguishes a deleted node from a missing atelet: actor revert and delete do not wait on a gone node.
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get"]
+- apiGroups: ["ate.dev"]
+  resources: ["workerpools", "csidriverconfigs"]
+  verbs: ["get", "watch", "list"]
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses"]
+  verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ate-api-server
+subjects:
+- kind: ServiceAccount
+  name: ate-api-server
+  namespace: ate-system
+roleRef:
+  kind: ClusterRole
+  name: ate-api-server
+  apiGroup: rbac.authorization.k8s.io

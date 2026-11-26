@@ -1,0 +1,81 @@
+# Upstream appVersion: the Deployment of manifests/ate-install/ate-controller.yaml.
+# Reference install changes: release image, --preview= (ate-setup).
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: ate-controller
+  namespace: ate-system
+spec:
+  replicas: {{ .Values.controller.replicas }}
+  selector:
+    matchLabels:
+      app: ate-controller
+  template:
+    metadata:
+      labels:
+        app: ate-controller
+    spec:
+      serviceAccountName: ate-controller
+      containers:
+      - name: ate-controller
+        image: {{ include "krci-substrate.image" (dict "image" .Values.controller.image "path" "controller.image") }}
+        args:
+        - --ateapi-ca-file=/run/servicedns-ca/trust-bundle.pem
+        - --ateapi-client-cert=/run/podidentity.podcert.ate.dev/credential-bundle.pem
+        - --dns-egress-policy=enforce-in-atunnel
+        - --preview=
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          capabilities:
+            drop:
+            - ALL
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_UID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.uid
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: k8s.namespace.name=$(POD_NAMESPACE),k8s.pod.name=$(POD_NAME),k8s.pod.uid=$(POD_UID),service.instance.id=$(POD_UID)
+        # Propagated to worker pods, except the exporter selection (ATE_WORKER_OTEL_*_EXPORTER keys).
+        envFrom:
+        - configMapRef:
+            name: ate-otel-config
+        ports:
+        - name: metrics
+          containerPort: 8080
+          protocol: TCP
+        - name: healthz
+          containerPort: 8081
+          protocol: TCP
+        volumeMounts:
+        - name: "podidentity"
+          mountPath: "/run/podidentity.podcert.ate.dev"
+        - name: "servicedns-ca"
+          mountPath: "/run/servicedns-ca"
+      volumes:
+      - name: "podidentity"
+        projected:
+          sources:
+          - podCertificate:
+              signerName: podidentity.podcert.ate.dev/identity
+              keyType: ECDSAP256
+              credentialBundlePath: credential-bundle.pem
+      - name: "servicedns-ca"
+        projected:
+          sources:
+          - clusterTrustBundle:
+              signerName: servicedns.podcert.ate.dev/identity
+              labelSelector:
+                matchLabels:
+                  podcert.ate.dev/canarying: live
+              path: trust-bundle.pem

@@ -1,0 +1,15 @@
+# Upstream appVersion: the ConfigMap of manifests/ate-install/ate-otel-config.yaml.
+# Chart change: OTLP export off. No OTEL_EXPORTER_OTLP_ENDPOINT; traces and metrics exporters `none`
+# (internal/serverboot) for the control plane and, through ate-controller, the worker pods. Logs: stdout.
+# Read through envFrom by ate-api-server, ate-controller, atelet, atenet-router, atenet-egress.
+# Editing this ConfigMap does not roll the consumers: run `kubectl rollout restart` on them.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ate-otel-config
+  namespace: ate-system
+data:
+  OTEL_TRACES_EXPORTER: none
+  OTEL_METRICS_EXPORTER: none
+  ATE_WORKER_OTEL_TRACES_EXPORTER: none
+  ATE_WORKER_OTEL_METRICS_EXPORTER: none

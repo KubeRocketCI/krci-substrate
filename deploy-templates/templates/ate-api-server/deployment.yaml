@@ -1,0 +1,309 @@
+# Upstream appVersion: the Deployment of manifests/ate-install/ate-api-server.yaml.
+# Reference install changes: release images, --preview=, --authz-bootstrap-owners, annotation ate.dev/env-hash (ate-setup).
+# Chart changes: S3 on the objectstore-plugin sidecar (snapshots.s3); ate.dev/env-hash is the sha256 of rendered config.yaml.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ate-api-server
+  namespace: ate-system
+spec:
+  replicas: {{ .Values.apiServer.replicas }}
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: ate-api-server
+  template:
+    metadata:
+      labels:
+        app: ate-api-server
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        ate.dev/env-hash: {{ include (print $.Template.BasePath "/ate-api-server/config.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: ate-api-server
+      # Must fit --drain-delay + --drain-timeout; --drain-delay covers the readinessProbe reaching NotReady.
+      terminationGracePeriodSeconds: 40
+      # Native sidecar: starts before ate-api-server, stops after it. Deletes and copies external
+      # snapshots over a Unix socket in an emptyDir. ate-api-server starts after the startup probe passes.
+      initContainers:
+      - name: objectstore-plugin
+        image: {{ include "krci-substrate.image" (dict "image" .Values.apiServer.objectstorePlugin.image "path" "apiServer.objectstorePlugin.image") }}
+        restartPolicy: Always
+        args:
+        - control
+        - --socket=/run/objectstore-plugin/control.sock
+        # Credential exchange (GCS only; S3 answers UNIMPLEMENTED). TLS with the service DNS certificate.
+        # --actor-jwt-issuer must equal the issuer ate-api-server mints with: both read the same ConfigMap key.
+        # The issuer certificate is verified against the service DNS trust bundle, plus the system roots
+        # unless the issuer host ends in .svc; a failed verification stops the sidecar at start.
+        - --exchange-listen=:8445
+        - --actor-jwt-issuer=$(ATE_API_ACTOR_JWT_ISSUER)
+        - --transfer-service-account=$(ATE_API_SNAPSHOT_TRANSFER_SERVICE_ACCOUNT)
+        - --preview=
+        ports:
+        - name: exchange
+          containerPort: 8445
+        # Unix socket and no shell in the image: the binary checks itself.
+        startupProbe:
+          exec:
+            command:
+            - /ko-app/objectstore-plugin
+            - healthcheck
+            - --socket=/run/objectstore-plugin/control.sock
+          periodSeconds: 2
+          failureThreshold: 30
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          capabilities:
+            drop:
+            - ALL
+        env:
+        # Storage settings live on the sidecar, same backend as the atelet sidecar.
+        # ate-api-server exits if ATE_STORAGE_BACKEND is set on it.
+        - name: ATE_STORAGE_BACKEND
+          value: "s3"
+        {{- with .Values.snapshots.s3 }}
+        - name: AWS_REGION
+          value: {{ required "snapshots.s3.region is required" .region | quote }}
+        {{- with .endpoint }}
+        - name: AWS_ENDPOINT_URL
+          value: {{ . | quote }}
+        {{- end }}
+        {{- if .usePathStyle }}
+        - name: AWS_S3_USE_PATH_STYLE
+          value: "true"
+        {{- end }}
+        {{- with .credentialsSecret }}
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: {{ . | quote }}
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ . | quote }}
+              key: AWS_SECRET_ACCESS_KEY
+        {{- end }}
+        {{- end }}
+        - name: ATE_API_ACTOR_JWT_ISSUER
+          valueFrom:
+            configMapKeyRef:
+              name: ate-api-server-envvars
+              key: ATE_API_ACTOR_JWT_ISSUER
+        - name: ATE_API_SNAPSHOT_TRANSFER_SERVICE_ACCOUNT
+          valueFrom:
+            configMapKeyRef:
+              name: ate-api-server-envvars
+              key: ATE_API_SNAPSHOT_TRANSFER_SERVICE_ACCOUNT
+        # The exchange verifies the ate-api-server certificate against the API Service name in this namespace.
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        envFrom:
+        - configMapRef:
+            name: ate-otel-config
+        volumeMounts:
+        - name: objectstore-plugin
+          mountPath: /run/objectstore-plugin
+        # Exchange: serving certificate (servicedns), trust bundle and client certificate toward ate-api-server (podidentity).
+        - name: "servicedns"
+          mountPath: "/run/servicedns.podcert.ate.dev"
+          readOnly: true
+        - name: "podidentity"
+          mountPath: "/run/podidentity.podcert.ate.dev"
+          readOnly: true
+      containers:
+      - name: ate-api-server
+        image: {{ include "krci-substrate.image" (dict "image" .Values.apiServer.image "path" "apiServer.image") }}
+        args:
+          - "--grpc-server-cred-bundle=/run/servicedns.podcert.ate.dev/credential-bundle.pem"
+          - --config-file=/run/apiconfig.ate.dev/apiconfig.textproto
+          - --authentication-config=/etc/ateapi/authentication/authentication.yaml
+          - --postgres-read-write-connection-string=@env
+          - --postgres-owner-connection-string=@env
+          - --postgres-read-write-role=@env
+          - --postgres-owner-role=@env
+          - --postgres-schema=@env
+          - --actor-id-jwt-pool=/run/actor-id-jwt-pool/pool.json
+          - --actor-jwt-issuer=@env
+          - --actor-id-ca-pool=/run/actor-id-ca-pool/pool.json
+          - --atelet-client-cred-bundle=/run/podidentity.podcert.ate.dev/credential-bundle.pem
+          - --pod-identity-ca-certs=/run/podidentity.podcert.ate.dev/trust-bundle.pem
+          # Enables actor egress through the egress gateway, cluster-wide.
+          - --default-egress-gateway-address=atenet-egress.ate-system.svc:443
+          - --drain-delay=13s
+          - --drain-timeout=15s
+          - --objectstore-plugin-socket=/run/objectstore-plugin/control.sock
+          - --snapshot-location=@env
+          - --preview=
+          - {{ printf "--authz-bootstrap-owners=%s" (required "apiServer.bootstrapOwners is required" .Values.apiServer.bootstrapOwners) | quote }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          capabilities:
+            add:
+            - NET_BIND_SERVICE
+            drop:
+            - ALL
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_UID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.uid
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: k8s.namespace.name=$(POD_NAMESPACE),k8s.pod.name=$(POD_NAME),k8s.pod.uid=$(POD_UID),service.instance.id=$(POD_UID)
+        # Later sources override earlier ones: ate-api-server-envvars over ate-otel-config, the Secret over both.
+        envFrom:
+        - configMapRef:
+            name: ate-otel-config
+        - configMapRef:
+            name: ate-api-server-envvars
+            optional: true
+        # Chart Secret (config.yaml): the bundled PostgreSQL DSNs, certificate logins, no password.
+        - secretRef:
+            name: ate-api-server-secret-envvars
+            optional: true
+        volumeMounts:
+        - name: objectstore-plugin
+          mountPath: /run/objectstore-plugin
+        # servicedns: gRPC serving certificate, SAN api.ate-system.svc.
+        - name: "servicedns"
+          mountPath: "/run/servicedns.podcert.ate.dev"
+        # podidentity: SPIFFE client identity toward atelet, trust bundle for the atelet serving certificate.
+        - name: "podidentity"
+          mountPath: "/run/podidentity.podcert.ate.dev"
+        # postgres: separate owner and read/write certificates, with each login as its CN.
+        - name: "postgres"
+          mountPath: "/run/postgres.podcert.ate.dev"
+          readOnly: true
+        - name: "actor-id-jwt-pool"
+          mountPath: "/run/actor-id-jwt-pool"
+        - name: "actor-id-ca-pool"
+          mountPath: "/run/actor-id-ca-pool"
+          readOnly: true
+        - name: "api-config"
+          mountPath: "/run/apiconfig.ate.dev"
+          readOnly: true
+        - name: "authentication-config"
+          mountPath: "/etc/ateapi/authentication"
+          readOnly: true
+        # postgres-server-ca: optional upstream mount for an external PostgreSQL. The chart creates no
+        # Secret postgres-server-ca, so the mount is empty; the bundled DSNs use the service DNS trust bundle.
+        - name: "postgres-server-ca"
+          mountPath: "/run/postgres-server-ca"
+          readOnly: true
+        ports:
+        - containerPort: 443
+        - name: prometheus
+          containerPort: 9090
+        - name: health
+          containerPort: 9091
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: health
+          initialDelaySeconds: 5
+          periodSeconds: 2
+          failureThreshold: 3
+        # :9091 binds after the store connect (up to 60s: 30 attempts, 2s apart) and the schema
+        # migrations (serialized across replicas on an advisory lock). Without this probe, liveness
+        # SIGTERMs at ~30s and the process exits into CrashLoopBackOff. Budget: 24 x 5s.
+        startupProbe:
+          httpGet:
+            path: /healthz
+            port: health
+          periodSeconds: 5
+          failureThreshold: 24
+        # /healthz stays 200 while draining and while the store is unreachable; /readyz turns 503 in both.
+        # The pool reconnects without a restart.
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: health
+          initialDelaySeconds: 10
+          periodSeconds: 10
+      volumes:
+      - name: objectstore-plugin
+        emptyDir: {}
+      - name: "servicedns"
+        projected:
+          sources:
+          - podCertificate:
+              signerName: servicedns.podcert.ate.dev/identity
+              keyType: ECDSAP256
+              credentialBundlePath: credential-bundle.pem
+          - clusterTrustBundle:
+              signerName: servicedns.podcert.ate.dev/identity
+              labelSelector:
+                matchLabels:
+                  podcert.ate.dev/canarying: live
+              path: trust-bundle.pem
+      - name: "podidentity"
+        projected:
+          sources:
+          - podCertificate:
+              signerName: podidentity.podcert.ate.dev/identity
+              keyType: ECDSAP256
+              credentialBundlePath: credential-bundle.pem
+          - clusterTrustBundle:
+              signerName: podidentity.podcert.ate.dev/identity
+              labelSelector:
+                matchLabels:
+                  podcert.ate.dev/canarying: live
+              path: trust-bundle.pem
+      - name: "postgres"
+        projected:
+          sources:
+          - podCertificate:
+              signerName: postgres.podcert.ate.dev/identity
+              keyType: ECDSAP256
+              credentialBundlePath: substrate_owner_user.pem
+              userAnnotations:
+                postgres.podcert.ate.dev/username: substrate_owner_user
+          - podCertificate:
+              signerName: postgres.podcert.ate.dev/identity
+              keyType: ECDSAP256
+              credentialBundlePath: substrate_readwrite_user.pem
+              userAnnotations:
+                postgres.podcert.ate.dev/username: substrate_readwrite_user
+      - name: "actor-id-jwt-pool"
+        projected:
+          sources:
+          - secret:
+              name: "actor-id-jwt-pool"
+              items:
+              - key: "pool"
+                path: "pool.json"
+      - name: "actor-id-ca-pool"
+        projected:
+          sources:
+          - secret:
+              name: "actor-id-ca-pool"
+              items:
+              - key: "pool"
+                path: "pool.json"
+      - name: "api-config"
+        configMap:
+          name: "ate-api-config"
+      - name: "authentication-config"
+        configMap:
+          name: "ate-api-authentication"
+      - name: "postgres-server-ca"
+        secret:
+          secretName: "postgres-server-ca"
+          optional: true

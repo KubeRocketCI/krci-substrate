@@ -1,0 +1,11 @@
+# Upstream appVersion: the PodDisruptionBudget of manifests/ate-install/ate-api-server.yaml.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ate-api-server
+  namespace: ate-system
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: ate-api-server

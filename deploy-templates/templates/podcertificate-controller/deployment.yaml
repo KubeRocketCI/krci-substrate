@@ -1,5 +1,5 @@
 # Upstream appVersion: the Deployment of manifests/ate-install/pod-certificate-controller.yaml.
-# Reference install changes: image ko:// resolved to the published release image, --preview= appended (ate-setup).
+# Reference install changes: release image, --preview= (ate-setup).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -8,7 +8,7 @@ metadata:
   labels:
     app: podcertificate-controller
 spec:
-  replicas: 1
+  replicas: {{ .Values.podcertificateController.replicas }}
   selector:
     matchLabels:
       app: podcertificate-controller
@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
       - name: controller
-        image: {{ include "krci-substrate.image" (dict "root" . "name" "podcertcontroller") }}
+        image: {{ include "krci-substrate.image" (dict "image" .Values.podcertificateController.image "path" "podcertificateController.image") }}
         args:
         - --in-cluster=true
         - --sharding-pod-namespace=$(POD_NAMESPACE)

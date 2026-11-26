@@ -5,7 +5,6 @@ kind: ClusterRole
 metadata:
   name: podcert-ate-dev-signer
 rules:
-# The service signer needs to be able to read services and pods.
 - apiGroups:
   - ""
   resources:
