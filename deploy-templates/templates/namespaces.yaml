@@ -1,0 +1,11 @@
+# Upstream appVersion: the Namespace of manifests/ate-install/ate-system-namespace.yaml.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ate-system
+---
+# Upstream appVersion: the Namespace of manifests/ate-install/pod-certificate-controller.yaml.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: podcertificate-controller-system

@@ -1,0 +1,2 @@
+# The chart renders the upstream namespaces and CRDs only; no value changes them.
+{}

@@ -1,0 +1,25 @@
+apiVersion: v2
+description: A Helm chart for upstream Agent Substrate, matching the upstream ate-setup install
+home: https://docs.kuberocketci.io/
+name: krci-substrate
+type: application
+version: 0.1.0
+appVersion: v1.0.1
+keywords:
+  - agent-substrate
+  - kuberocketci
+  - sandbox
+maintainers:
+  - name: epmd-edp
+    email: SupportEPMD-EDP@epam.com
+    url: https://solutionshub.epam.com/solution/kuberocketci
+sources:
+  - https://github.com/KubeRocketCI/krci-substrate
+  - https://github.com/agent-substrate/substrate
+annotations:
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/links: |
+    - name: KubeRocketCI Documentation
+      url: https://docs.kuberocketci.io
+    - name: Agent Substrate
+      url: https://github.com/agent-substrate/substrate

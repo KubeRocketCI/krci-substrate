@@ -1,0 +1,39 @@
+{{ template "chart.header" . }}
+
+{{ template "chart.deprecationWarning" . }}
+
+{{ template "chart.badgesSection" . }}
+
+{{ template "chart.description" . }}
+
+{{ template "chart.homepageLine" . }}
+
+## Introduction
+
+The chart installs objects of [Agent Substrate](https://github.com/agent-substrate/substrate) `{{ .AppVersion }}`, the release named by `appVersion`.
+Each chart object equals its reference install object: what upstream `ate-setup deploy ate-system` applies for that release, with the envoy dataplane on a non-kind cluster.
+
+The chart renders the namespaces and CRDs only, copied from the upstream manifests of the release tag:
+
+| Chart path | Upstream path |
+|---|---|
+| `crds/ate.dev_*.yaml` | `manifests/ate-install/generated/ate.dev_*.yaml`, byte for byte |
+| `templates/namespaces.yaml` | `manifests/ate-install/ate-system-namespace.yaml`, the Namespace of `manifests/ate-install/pod-certificate-controller.yaml` |
+
+Namespaces are fixed: `ate-system` and `podcertificate-controller-system`. The release namespace is not used.
+
+## Deploy with Helm
+
+```bash
+helm install krci-substrate ./deploy-templates
+```
+
+Helm installs `crds/` on first install only; it does not upgrade them.
+
+{{ template "chart.maintainersSection" . }}
+
+{{ template "chart.sourcesSection" . }}
+
+{{ template "chart.requirementsSection" . }}
+
+{{ template "chart.valuesSection" . }}
