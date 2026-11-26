@@ -1,0 +1,16 @@
+# Smoke tests of an installed chart: hack/e2e-kind.sh smoke. Directory order: 01-install, then 02-actor.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Configuration
+metadata:
+  name: krci-substrate-smoke
+spec:
+  parallel: 1
+  failFast: true
+  fullName: true
+  timeouts:
+    apply: 30s
+    # Includes image pulls on a cold node.
+    assert: 5m
+    cleanup: 2m
+    delete: 2m
+    exec: 2m

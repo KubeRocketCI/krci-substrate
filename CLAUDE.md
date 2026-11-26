@@ -14,7 +14,7 @@ make ct-lint        # chart-testing lint against main (ct, yamllint, yamale on P
 make e2e-kind       # kind test bed: install on kind-krci-substrate, then smoke
 ```
 
-Kind test bed (`hack/e2e-kind.sh`): `make e2e-kind-cluster-create` / `e2e-kind-cluster-delete` need kind and Docker; `make e2e-kind-install` needs kubectl, helm and jq; `make e2e-kind-smoke` needs kubectl, jq and curl (downloads kubectl-ate into `.cache/bin/`). Kubeconfig: `.cache/kind-krci-substrate.kubeconfig` only. `HELM_CA_FILE`: optional CA bundle for the chart registries.
+Kind test bed (`hack/e2e-kind.sh`): `make e2e-kind-cluster-create` / `e2e-kind-cluster-delete` need kind and Docker; `make e2e-kind-install` needs kubectl, helm and jq; `make e2e-kind-smoke` needs kubectl, jq, curl and Go, installs chainsaw into `bin/` (or uses `CHAINSAW=<path>`) and kubectl-ate into `.cache/bin/`, and runs the Chainsaw tests of `e2e/chainsaw/`. Kubeconfig: `.cache/kind-krci-substrate.kubeconfig` only. `HELM_CA_FILE`: optional CA bundle for the chart registries.
 
 ## Layout
 
@@ -28,6 +28,7 @@ deploy-templates/files/      upstream files the templates embed, byte for byte (
 deploy-templates/ci/         lint values: make helm-lint, ct lint
 ct-configs/                  chart-testing and yamllint config
 e2e/kind/                    kind test bed: cluster config, dependency values, fixtures; not part of the chart
+e2e/chainsaw/                smoke tests of an installed chart (Chainsaw), in directory order: 01-install, 02-actor
 hack/e2e-kind.sh             kind test bed driver; versions of cert-manager and ESO at the top
 .github/workflows/pr.yaml    commit title, helm-docs, chart-testing lint
 ```

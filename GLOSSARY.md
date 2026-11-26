@@ -38,5 +38,5 @@ The kind cluster `krci-substrate` (context `kind-krci-substrate`) with the chart
 _Avoid_: testbed, sandbox
 
 **Fixture**:
-An object the kind test bed installs that is neither the chart nor a dependency (cert-manager, ESO): the RustFS S3 fixture; the smoke WorkerPool and ActorTemplate (`e2e/kind/smoke-*.yaml`).
+An object the kind test bed installs that is neither the chart nor a dependency (cert-manager, ESO): the RustFS S3 fixture; the smoke WorkerPool and ActorTemplate (`e2e/chainsaw/02-actor/`).
 _Avoid_: mock, stub
