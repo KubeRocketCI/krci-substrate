@@ -2,7 +2,7 @@
 
 Helm chart for [Agent Substrate](https://github.com/agent-substrate/substrate), for GitOps-managed KubeRocketCI clusters. Clusters consume it through [edp-cluster-add-ons](https://github.com/epam/edp-cluster-add-ons), the KubeRocketCI Argo CD add-ons catalog.
 
-Each chart object copied from upstream equals its reference install object: what upstream `ate-setup deploy ate-system` applies for the release in the chart `appVersion` (envoy dataplane, non-kind cluster). Objects are copied from the upstream manifests of that release tag.
+Each chart object copied from upstream equals its reference install object: what upstream `ate-setup deploy ate-system` applies for the release in the chart `appVersion` (envoy dataplane, non-kind cluster), apart from the deviations listed in the chart documentation. Objects are copied from the upstream manifests of that release tag.
 
 The chart is in [`deploy-templates/`](deploy-templates/); its documentation is [`deploy-templates/README.md`](deploy-templates/README.md).
 
@@ -14,7 +14,9 @@ The chart is in [`deploy-templates/`](deploy-templates/); its documentation is [
 | CRDs `workerpools`, `sandboxconfigs`, `csidriverconfigs` (`ate.dev`) | yes |
 | podcertificate-controller, its RBAC and ServiceAccount | yes |
 | Pool Secrets (CA pools, JWT pool), from cert-manager and ESO | yes |
-| PostgreSQL, control plane, dataplane | no |
+| Bundled PostgreSQL, ate-api-server, ate-idp-server, ate-controller, their config, Services, RBAC, PDBs | yes |
+| NetworkPolicies of `ate-system`, ConfigMap `ate-otel-config` | yes |
+| Dataplane: atelet, atenet-router, atenet-egress | no |
 
 ## Development
 
@@ -31,7 +33,8 @@ Cluster `krci-substrate`, Kubernetes 1.37, context `kind-krci-substrate`. Its ku
 make e2e-kind-cluster-create   # create the cluster, set proxy ARP on the nodes (kind, Docker)
 make e2e-kind                  # install dependencies and the chart, then smoke
 make e2e-kind-install          # cert-manager, ESO, the chart, RustFS
-make e2e-kind-smoke            # namespaces, CRDs, pool Secrets, podcertificate-controller, ClusterTrustBundles; stops at the first failed check
+make e2e-kind-smoke            # namespaces, CRDs, pool Secrets, podcertificate-controller, ClusterTrustBundles,
+                               # control plane available, PostgreSQL certificate logins, kubectl ate atespace; stops at the first failed check
 make e2e-kind-cluster-delete   # delete the cluster (kind, Docker)
 ```
 
@@ -41,7 +44,8 @@ make e2e-kind-cluster-delete   # delete the cluster (kind, Docker)
 | Proxy ARP | `make e2e-kind-cluster-create`: `docker exec` of `sysctl -w net.ipv4.conf.all.proxy_arp=1` on every node, as upstream `hack/create-kind-cluster.sh`; re-run it after a Docker restart |
 | cert-manager, ESO | versions: constants at the top of `hack/e2e-kind.sh`; values: `e2e/kind/<release>-values.yaml` |
 | RustFS S3 fixture | `e2e/kind/rustfs.yaml`, test only; credentials in Secret `ate-system/rustfs-credentials` |
-| Chart | `deploy-templates/` with `e2e/kind/values.yaml`, release `default/krci-substrate` |
+| Chart | `deploy-templates/` with `e2e/kind/values.yaml`, release `default/krci-substrate`; installed without `helm --wait`, then waited for after RustFS |
+| kubectl-ate | release binary of `KUBECTL_ATE_VERSION` (top of `hack/e2e-kind.sh`), sha256-checked, in `.cache/bin/` |
 
 Every step is idempotent: a second run reports each release unchanged and each object unchanged. A dependency is skipped when deployed at its version, and helm installs the chart CRDs on first install only: after a dependency values change or a CRD change, recreate the cluster.
 

@@ -1,12 +1,17 @@
-images:
-  podcertcontroller:
-    # -- Image repository of podcertificate-controller.
-    repository: ghcr.io/agent-substrate/substrate/podcertcontroller
-    # -- Image tag. Bump it with appVersion.
-    tag: v1.0.1
-    # -- Image digest (sha256:...) of the tag. Bump it with appVersion. Empty: tag only.
-    digest: sha256:46aa01a624053c23080da41ea37937afc5b544cecf77088ab2196b4ffb734b4f
+# Defaults: reference install of the chart appVersion. Bump image tags and digests with it.
 
+podcertificateController:
+  image:
+    # -- Image repository.
+    repository: ghcr.io/agent-substrate/substrate/podcertcontroller
+    # -- Image tag.
+    tag: v1.0.1
+    # -- Image digest `sha256:<64 hex>`. Empty: tag only.
+    digest: sha256:46aa01a624053c23080da41ea37937afc5b544cecf77088ab2196b4ffb734b4f
+  # -- Replica count.
+  replicas: 1
+
+# PKI: pool Secrets from cert-manager and ESO (ADR-0001).
 pki:
   certManager:
     # -- Lifetime of each CA certificate (upstream: 365 days).
@@ -16,3 +21,88 @@ pki:
   externalSecrets:
     # -- Interval at which ESO re-reads CA certificate Secrets into pool Secrets.
     refreshInterval: 1h
+
+# Bundled PostgreSQL: StatefulSet postgres, one replica.
+postgres:
+  image:
+    # -- Image repository, shared by PostgreSQL and the tls-reloader sidecar.
+    repository: postgres
+    # -- Image tag.
+    tag: 18-alpine
+    # -- Image digest `sha256:<64 hex>`. Empty: tag only.
+    digest: sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+  # -- Upstream base. Sized for the activation load of the whole control plane.
+  resources:
+    requests:
+      cpu: "2"
+      memory: 1Gi
+    limits:
+      cpu: "16"
+      memory: 2Gi
+  storage:
+    # -- Upstream base. Headroom for WAL churn; also scales provisioned IOPS on some storage classes.
+    size: 500Gi
+    # -- Empty: cluster default StorageClass.
+    storageClassName: ""
+
+apiServer:
+  image:
+    # -- Image repository.
+    repository: ghcr.io/agent-substrate/substrate/ateapi
+    # -- Image tag.
+    tag: v1.0.1
+    # -- Image digest `sha256:<64 hex>`. Empty: tag only.
+    digest: sha256:5d9f6da2e1446766a48908764891cc3c66cc6ff657279415c0d3839d5e9476ee
+  # -- Replica count.
+  replicas: 2
+  # -- Required. Issuer of ServiceAccount tokens (`iss` claim, exact match, `https://`). EKS: the cluster OIDC issuer URL. Other clusters: `issuer` of `kubectl get --raw /.well-known/openid-configuration`.
+  serviceAccountIssuer: ""
+  # -- Comma-separated principals granted owner on global:root. Default: ServiceAccount ate-system/ate-client, the token `kubectl ate` mints. Shared install: the operator principals.
+  bootstrapOwners: system:serviceaccount:ate-system:ate-client
+  serviceAccount:
+    # -- ServiceAccount annotations. IRSA: `eks.amazonaws.com/role-arn: arn:aws:iam::<account>:role/<role>`.
+    annotations: {}
+  objectstorePlugin:
+    image:
+      # -- Image repository.
+      repository: ghcr.io/agent-substrate/substrate/objectstore-plugin
+      # -- Image tag.
+      tag: v1.0.1
+      # -- Image digest `sha256:<64 hex>`. Empty: tag only.
+      digest: sha256:311cc9cfb9ee8c344f3ebc3e4d5cafb88468840023b62d1c47c6338ed32b0352
+
+idpServer:
+  image:
+    # -- Image repository.
+    repository: ghcr.io/agent-substrate/substrate/ate-idp-server
+    # -- Image tag.
+    tag: v1.0.1
+    # -- Image digest `sha256:<64 hex>`. Empty: tag only.
+    digest: sha256:5d9302255998a3f376cbea8d8860488d20b6c030417c0c3ea7fba53a67f2c9f7
+  # -- Replica count.
+  replicas: 2
+
+controller:
+  image:
+    # -- Image repository.
+    repository: ghcr.io/agent-substrate/substrate/atecontroller
+    # -- Image tag.
+    tag: v1.0.1
+    # -- Image digest `sha256:<64 hex>`. Empty: tag only.
+    digest: sha256:b63519a821f4c702a689caf5b1ff549a8d6134ac3da94def30c71f914a70d614
+  # -- Replica count.
+  replicas: 1
+
+# Snapshot storage: S3. Every objectstore-plugin sidecar (ate-api-server, and atelet with the dataplane) gets the same S3 environment.
+snapshots:
+  s3:
+    # -- Required. S3 bucket name rules.
+    bucket: ""
+    # -- Required. AWS_REGION.
+    region: ""
+    # -- AWS_ENDPOINT_URL. Empty: the AWS endpoint of the region.
+    endpoint: ""
+    # -- AWS_S3_USE_PATH_STYLE. Set for MinIO, RustFS and other S3-compatible stores.
+    usePathStyle: false
+    # -- Existing Secret in ate-system with keys AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY. Credentials come only from a Secret, never from values. Use only for the kind test bed or an S3-compatible store without workload identity. EKS: leave empty (AWS SDK default credential chain) and give S3 access to ate-system/ate-api-server, and with the dataplane ate-system/atelet, through EKS Pod Identity or IRSA (`<service>.serviceAccount.annotations`).
+    credentialsSecret: ""

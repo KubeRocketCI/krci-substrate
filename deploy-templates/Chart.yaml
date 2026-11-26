@@ -3,7 +3,7 @@ description: A Helm chart for upstream Agent Substrate, matching the upstream at
 home: https://docs.kuberocketci.io/
 name: krci-substrate
 type: application
-version: 0.2.0
+version: 0.3.0
 appVersion: v1.0.1
 keywords:
   - agent-substrate

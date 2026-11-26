@@ -11,11 +11,11 @@ The Agent Substrate repository, `github.com/agent-substrate/substrate`, at the r
 _Avoid_: kagent, fork, source (alone)
 
 **Reference install**:
-The objects `ate-setup deploy ate-system` applies for the chart `appVersion` with the envoy dataplane on a non-kind cluster. Every chart object copied from an upstream manifest equals its reference install object.
+The objects `ate-setup deploy ate-system` applies for the chart `appVersion` with the envoy dataplane on a non-kind cluster. Every chart object copied from an upstream manifest equals its reference install object, apart from the chart deviations the chart README lists.
 _Avoid_: golden, baseline, expected manifest
 
 **Upstream manifest**:
-A file under `manifests/` of upstream; the chart copies its objects unchanged, except where `ate-setup` changes them in the reference install (image references, `--preview=`).
+A file under `manifests/` of upstream; the chart copies its objects unchanged, except where `ate-setup` changes them in the reference install (image references, `--preview=`, flags and annotations it sets) and the chart deviations the chart README lists with a reason.
 _Avoid_: template (for this), raw YAML
 
 ## PKI

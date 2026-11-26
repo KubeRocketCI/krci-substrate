@@ -15,9 +15,9 @@ validate-docs: helm-docs ## Fail if the generated chart docs are out of date.
 	@git diff -s --exit-code $(CHART_DIR)/README.md || (echo "Run 'make helm-docs' to address the issue." && git diff && exit 1)
 
 .PHONY: helm-lint
-helm-lint: ## Run helm lint and render the chart.
-	helm lint $(CHART_DIR)
-	helm template krci-substrate $(CHART_DIR) --include-crds >/dev/null
+helm-lint: ## Run helm lint and render the chart with the values in deploy-templates/ci/.
+	helm lint $(CHART_DIR) --values $(CHART_DIR)/ci/s3-values.yaml
+	helm template krci-substrate $(CHART_DIR) --include-crds --values $(CHART_DIR)/ci/s3-values.yaml >/dev/null
 
 .PHONY: ct-lint
 ct-lint: ## Run chart-testing lint against the main branch (needs ct, yamllint, yamale).
@@ -45,15 +45,11 @@ e2e-kind-smoke: ## Run the smoke checks on kind-krci-substrate.
 .PHONY: e2e-kind
 e2e-kind: e2e-kind-install e2e-kind-smoke ## Install on kind-krci-substrate, then run the smoke checks.
 
-## Location to install dependencies to
 LOCALBIN ?= $(shell pwd)/bin
 $(LOCALBIN):
 	mkdir -p "$(LOCALBIN)"
 
-## Tool Binaries
 HELMDOCS ?= $(LOCALBIN)/helm-docs
-
-## Tool Versions
 HELMDOCS_VERSION ?= v1.14.2
 
 .PHONY: helmdocs
@@ -61,10 +57,7 @@ helmdocs: $(HELMDOCS) ## Download helm-docs locally if necessary.
 $(HELMDOCS): $(LOCALBIN)
 	$(call go-install-tool,$(HELMDOCS),github.com/norwoodj/helm-docs/cmd/helm-docs,$(HELMDOCS_VERSION))
 
-# go-install-tool installs a Go package as <binary>-<version> and links <binary> to it.
-# $1 - target path with name of binary
-# $2 - package url which can be installed
-# $3 - specific version of package
+# go-install-tool <binary path> <package> <version>: installs as <binary>-<version>, links <binary> to it.
 define go-install-tool
 @[ -f "$(1)-$(3)" ] && [ "$$(readlink -- "$(1)" 2>/dev/null)" = "$(1)-$(3)" ] || { \
 set -e; \

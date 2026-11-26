@@ -1,0 +1,74 @@
+# Upstream appVersion: the Deployment of manifests/ate-install/ate-idp-server.yaml.
+# Reference install changes: release image, --issuer (installdefaults.ActorJWTIssuer), --preview= (ate-setup).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ate-idp-server
+  namespace: ate-system
+spec:
+  replicas: {{ .Values.idpServer.replicas }}
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: ate-idp-server
+  template:
+    metadata:
+      labels:
+        app: ate-idp-server
+    spec:
+      serviceAccountName: ate-idp-server
+      containers:
+      - name: ate-idp-server
+        image: {{ include "krci-substrate.image" (dict "image" .Values.idpServer.image "path" "idpServer.image") }}
+        args:
+        - --actor-id-jwt-pool=/run/actor-id-jwt-pool/pool.json
+        - --server-cred-bundle=/run/servicedns.podcert.ate.dev/credential-bundle.pem
+        - --issuer=https://idp.ate-system.svc
+        - --preview=
+        ports:
+        - name: https
+          containerPort: 8443
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: https
+            scheme: HTTPS
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: https
+            scheme: HTTPS
+          periodSeconds: 10
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        # Serving certificate, SAN idp.ate-system.svc.
+        - name: servicedns
+          mountPath: /run/servicedns.podcert.ate.dev
+        - name: actor-id-jwt-pool
+          mountPath: /run/actor-id-jwt-pool
+      volumes:
+      - name: servicedns
+        projected:
+          sources:
+          - podCertificate:
+              signerName: servicedns.podcert.ate.dev/identity
+              keyType: ECDSAP256
+              credentialBundlePath: credential-bundle.pem
+      # Same pool ate-api-server signs with.
+      - name: actor-id-jwt-pool
+        projected:
+          sources:
+          - secret:
+              name: actor-id-jwt-pool
+              items:
+              - key: pool
+                path: pool.json

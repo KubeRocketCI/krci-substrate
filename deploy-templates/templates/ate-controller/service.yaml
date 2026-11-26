@@ -1,0 +1,16 @@
+# Upstream appVersion: the Service of manifests/ate-install/ate-controller.yaml.
+kind: Service
+apiVersion: v1
+metadata:
+  name: ate-controller
+  namespace: ate-system
+  labels:
+    app: ate-controller
+spec:
+  selector:
+    app: ate-controller
+  ports:
+  - name: metrics
+    port: 8080
+    targetPort: metrics
+    protocol: TCP

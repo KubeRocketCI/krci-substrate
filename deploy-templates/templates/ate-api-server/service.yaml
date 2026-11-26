@@ -1,0 +1,23 @@
+# Upstream appVersion: the Service of manifests/ate-install/ate-api-server.yaml.
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: ate-system
+spec:
+  # Headless: one A record per ready pod, for client-side gRPC load balancing.
+  clusterIP: None
+  # Require fails on single-stack clusters.
+  ipFamilyPolicy: PreferDualStack
+  selector:
+    app: ate-api-server
+  ports:
+  - name: grpc
+    protocol: TCP
+    port: 443
+    targetPort: 443
+  # objectstore-plugin credential exchange, called by the node plugins beside atelet.
+  - name: exchange
+    protocol: TCP
+    port: 8445
+    targetPort: 8445

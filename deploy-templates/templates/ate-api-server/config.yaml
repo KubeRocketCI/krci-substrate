@@ -1,0 +1,73 @@
+{{- /*
+Chart objects: the ConfigMaps and Secret of ate-setup EnsureAPIServerPrerequisites
+(cmd/ate-setup/internal/steps/prereqs.go, apienv.go, create.go), bundled PostgreSQL.
+ate.dev/env-hash of the ate-api-server Deployment is the digest of this file.
+*/ -}}
+{{- $s3 := .Values.snapshots.s3 -}}
+{{- $bucket := required "snapshots.s3.bucket is required" $s3.bucket -}}
+{{- if not (regexMatch "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$" $bucket) -}}
+{{- fail "snapshots.s3.bucket: 3-63 characters of lowercase letters, digits, '.' and '-', starting and ending with a letter or digit" -}}
+{{- end -}}
+{{- $location := printf "s3://%s/" $bucket -}}
+{{- $issuer := required "apiServer.serviceAccountIssuer is required" .Values.apiServer.serviceAccountIssuer -}}
+{{- if not (regexMatch "^https://[^/?#\\s]+" $issuer) -}}
+{{- fail "apiServer.serviceAccountIssuer must be an https:// URL with a host" -}}
+{{- end -}}
+# ate-setup CreateAPIServerEnvVars: roles, actor JWT issuer (installdefaults.ActorJWTIssuer), snapshot location.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ate-api-server-envvars
+  namespace: ate-system
+data:
+  ATE_API_ACTOR_JWT_ISSUER: https://idp.ate-system.svc
+  ATE_API_POSTGRES_OWNER_ROLE: substrate_owner
+  ATE_API_POSTGRES_READ_WRITE_ROLE: substrate_readwrite
+  ATE_API_SNAPSHOT_LOCATION: {{ $location | quote }}
+  # GCS only; empty on S3.
+  ATE_API_SNAPSHOT_TRANSFER_SERVICE_ACCOUNT: ""
+---
+# ate-setup CreateAPIServerEnvVars: bundledPostgresDSN of each login, certificate only, no password.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ate-api-server-secret-envvars
+  namespace: ate-system
+type: Opaque
+data:
+  {{- range $key, $user := dict "ATE_API_POSTGRES_READ_WRITE_CONNECTION_STRING" "substrate_readwrite_user" "ATE_API_POSTGRES_OWNER_CONNECTION_STRING" "substrate_owner_user" }}
+  {{- $bundle := printf "/run/postgres.podcert.ate.dev/%s.pem" $user }}
+  {{ $key }}: {{ printf "postgresql://%s@postgres.ate-system.svc:5432/atepg?sslmode=verify-full&sslrootcert=/run/servicedns.podcert.ate.dev/trust-bundle.pem&sslcert=%s&sslkey=%s" $user $bundle $bundle | b64enc }}
+  {{- end }}
+  ATE_API_POSTGRES_SCHEMA: {{ "substrate" | b64enc }}
+---
+# ate-setup CreateAPIConfig: prototext of ateconfigpb.APIConfig.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ate-api-config
+  namespace: ate-system
+data:
+  apiconfig.textproto: |
+    logging: {
+      level: "info"
+    }
+---
+# ate-setup CreateAPIAuthenticationConfig: kubernetesJWTProvider of the trusted ServiceAccount issuer.
+# An in-cluster issuer gets the projected CA and token for OIDC discovery.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ate-api-authentication
+  namespace: ate-system
+data:
+  authentication.yaml: |-
+    jwtProviders:
+    - audiences:
+      - api.ate-system.svc
+      {{- if has $issuer (list "https://kubernetes.default.svc" "https://kubernetes.default.svc.cluster.local") }}
+      certificateAuthorityFile: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      discoveryTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+      {{- end }}
+      issuer: {{ $issuer | quote }}
+      name: kubernetes
