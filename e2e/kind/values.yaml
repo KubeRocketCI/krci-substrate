@@ -12,14 +12,21 @@ postgres:
   storage:
     size: 1Gi
 
+# One replica each: the test bed runs on a GitHub runner too.
 apiServer:
+  replicas: 1
   # kube-apiserver --service-account-issuer of kind.
   serviceAccountIssuer: https://kubernetes.default.svc.cluster.local
+
+idpServer:
+  replicas: 1
 
 # Upstream manifests/ate-install/kind/ate-api-server overlay: the RustFS S3 fixture.
 snapshots:
   s3:
     bucket: ate-snapshots
+    # Same as binding snapshotRoot of e2e/chainsaw/02-actor/chainsaw-test.yaml.
+    prefix: krci-substrate/kind
     region: us-east-1
     endpoint: http://rustfs.ate-system.svc:9000
     usePathStyle: true

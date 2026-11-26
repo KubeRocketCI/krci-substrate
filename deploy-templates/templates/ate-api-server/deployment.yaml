@@ -49,7 +49,6 @@ spec:
         ports:
         - name: exchange
           containerPort: 8445
-        # Unix socket and no shell in the image: the binary checks itself.
         startupProbe:
           exec:
             command:
@@ -113,7 +112,6 @@ spec:
           - --actor-id-ca-pool=/run/actor-id-ca-pool/pool.json
           - --atelet-client-cred-bundle=/run/podidentity.podcert.ate.dev/credential-bundle.pem
           - --pod-identity-ca-certs=/run/podidentity.podcert.ate.dev/trust-bundle.pem
-          # Enables actor egress through the egress gateway, cluster-wide.
           - --default-egress-gateway-address=atenet-egress.ate-system.svc:443
           - --drain-delay=13s
           - --drain-timeout=15s

@@ -1,7 +1,7 @@
 # Upstream appVersion: the StatefulSet of manifests/ate-install/postgres/postgres.yaml.
 # Reference install changes: claim StorageClass (ate-setup --postgres-storage-class).
 # Chart changes: postgres.resources, postgres.storage; volume setup at /docker-entrypoint-initdb.d
-# (ConfigMap postgres-setup, ADR-0002).
+# (ConfigMap postgres-setup, ADR-0002); postStart waits for TCP.
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -67,8 +67,9 @@ spec:
               command:
               - /bin/sh
               - -ec
+              # Waits for TCP: the init server is socket-only, and a createdb during init races the entrypoint.
               - |
-                until psql -U "${POSTGRES_USER}" -d postgres -Atc 'SELECT 1' >/dev/null 2>&1; do
+                until nc -z 127.0.0.1 5432 && psql -U "${POSTGRES_USER}" -d postgres -Atc 'SELECT 1' >/dev/null 2>&1; do
                   sleep 1
                 done
                 if ! psql -U "${POSTGRES_USER}" -d postgres -Atc \
@@ -124,7 +125,6 @@ spec:
         - name: setup
           mountPath: /docker-entrypoint-initdb.d
           readOnly: true
-        # One database for the whole control plane; sustains several cores under activation load.
         resources:
           {{- toYaml .Values.postgres.resources | nindent 10 }}
       volumes:
@@ -165,6 +165,4 @@ spec:
       {{- end }}
       resources:
         requests:
-          # Headroom against WAL churn: a full pg_wal is a PANIC that drops every connection.
-          # Size also scales provisioned IOPS/throughput on PD-backed storage classes.
           storage: {{ .Values.postgres.storage.size | quote }}

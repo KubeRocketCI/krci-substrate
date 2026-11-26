@@ -48,7 +48,6 @@ spec:
       terminationGracePeriodSeconds: 60
       initContainers:
       {{- if $upstreamCA }}
-      # Upstream trust bundle: image system roots, then egress.upstreamCA.
       - name: upstream-ca-bundle
         image: {{ $envoyImage }}
         command:
@@ -83,7 +82,6 @@ spec:
         - "--log-level=info"
         - --preview=
         env:
-        # Soft heap ceiling below the memory limit.
         - name: GOMEMLIMIT
           value: "640MiB"
         # Scale with the live secret count: ~44,750 B per secret, ~427 MiB at 10,000.

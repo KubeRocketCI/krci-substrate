@@ -2,8 +2,9 @@
 # Kind test bed: cluster krci-substrate, context kind-krci-substrate, kubeconfig .cache/kind-krci-substrate.kubeconfig.
 #   cluster-create, cluster-delete  need kind and Docker.
 #   install                         needs kubectl, helm and jq; no Docker.
-#   smoke                           needs kubectl, jq, curl and chainsaw (first run downloads kubectl-ate); no Docker.
-#                                   make e2e-kind-smoke installs chainsaw with Go, or passes CHAINSAW=<path>.
+#   kubectl-ate                     downloads kubectl-ate into .cache/bin; needs curl.
+#   smoke                           needs kubectl, jq, curl and chainsaw; no Docker.
+# KIND, CHAINSAW: binary paths; default kind on PATH, bin/chainsaw. make installs both into bin/ with Go.
 # Every command is idempotent. No other kubeconfig or cluster is used.
 # HELM_CA_FILE: optional CA bundle for the chart registries (helm --ca-file).
 set -euo pipefail
@@ -22,7 +23,7 @@ CLUSTER="krci-substrate"
 CONTEXT="kind-krci-substrate"
 KUBECONFIG_FILE="${ROOT}/.cache/kind-krci-substrate.kubeconfig"
 KUBECTL_ATE="${ROOT}/.cache/bin/kubectl-ate-${KUBECTL_ATE_VERSION}"
-# chainsaw binary; make e2e-kind-smoke passes bin/chainsaw.
+KIND="${KIND:-kind}"
 CHAINSAW="${CHAINSAW:-${ROOT}/bin/chainsaw}"
 # Chart Deployments in ate-system, besides StatefulSet postgres and DaemonSet atelet.
 readonly CONTROL_PLANE_DEPLOYMENTS=(ate-api-server ate-idp-server ate-controller
@@ -33,20 +34,20 @@ h() { helm --kubeconfig "${KUBECONFIG_FILE}" --kube-context "${CONTEXT}" "$@"; }
 
 cluster_create() {
   mkdir -p "${ROOT}/.cache"
-  if grep -qx "${CLUSTER}" <<<"$(kind get clusters)"; then
-    kind export kubeconfig --name "${CLUSTER}" --kubeconfig "${KUBECONFIG_FILE}"
+  if grep -qx "${CLUSTER}" <<<"$("${KIND}" get clusters)"; then
+    "${KIND}" export kubeconfig --name "${CLUSTER}" --kubeconfig "${KUBECONFIG_FILE}"
   else
-    kind create cluster --config "${KIND_DIR}/cluster.yaml" --kubeconfig "${KUBECONFIG_FILE}"
+    "${KIND}" create cluster --config "${KIND_DIR}/cluster.yaml" --kubeconfig "${KUBECONFIG_FILE}"
   fi
   # Proxy ARP for gVisor loopback pod-to-pod networking (upstream hack/create-kind-cluster.sh).
   # Runtime sysctl: re-run after a Docker restart.
-  for node in $(kind get nodes --name "${CLUSTER}"); do
+  for node in $("${KIND}" get nodes --name "${CLUSTER}"); do
     docker exec "${node}" sysctl -w net.ipv4.conf.all.proxy_arp=1
   done
 }
 
 cluster_delete() {
-  kind delete cluster --name "${CLUSTER}" --kubeconfig "${KUBECONFIG_FILE}"
+  "${KIND}" delete cluster --name "${CLUSTER}" --kubeconfig "${KUBECONFIG_FILE}"
   rm -f "${KUBECONFIG_FILE}"
 }
 
@@ -129,21 +130,22 @@ kubectl_ate_install() {
   mv "${KUBECTL_ATE}.download" "${KUBECTL_ATE}"
 }
 
-# Chainsaw tests of e2e/chainsaw against the installed chart. kubectl ate: kubectl plugin from .cache/bin.
-# JUnit report: .cache/chainsaw-smoke.xml.
+# kubectl ate: kubectl plugin from .cache/bin. JUnit report, one test case per step: .cache/chainsaw-smoke.xml.
+# Runs from ROOT: report suite names are the test paths relative to the repository.
 smoke() {
   kubectl_ate_install
   ln -sf "${KUBECTL_ATE}" "${ROOT}/.cache/bin/kubectl-ate"
-  KUBECONFIG="${KUBECONFIG_FILE}" PATH="${ROOT}/.cache/bin:${PATH}" "${CHAINSAW}" test \
-    --config "${ROOT}/e2e/chainsaw/.chainsaw.yaml" --kube-context "${CONTEXT}" \
-    --report-format JUNIT-TEST --report-path "${ROOT}/.cache" --report-name chainsaw-smoke \
-    "${ROOT}/e2e/chainsaw"
+  (cd "${ROOT}" && KUBECONFIG="${KUBECONFIG_FILE}" PATH="${ROOT}/.cache/bin:${PATH}" "${CHAINSAW}" test \
+    --config e2e/chainsaw/.chainsaw.yaml --kube-context "${CONTEXT}" \
+    --report-format JUNIT-STEP --report-path .cache --report-name chainsaw-smoke \
+    e2e/chainsaw)
 }
 
 case "${1:-}" in
   cluster-create) cluster_create ;;
   cluster-delete) cluster_delete ;;
   install) install_all ;;
+  kubectl-ate) kubectl_ate_install ;;
   smoke) smoke ;;
-  *) echo "Usage: $0 cluster-create|cluster-delete|install|smoke" >&2; exit 2 ;;
+  *) echo "Usage: $0 cluster-create|cluster-delete|install|kubectl-ate|smoke" >&2; exit 2 ;;
 esac

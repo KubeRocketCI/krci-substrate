@@ -54,7 +54,6 @@ spec:
         # atelet per-asset cap. Bounds the asset-staging volume; a download past the capacity waits.
         - --asset-staging-capacity=8Gi
         - --preview=
-        # Unix socket and no shell in the image: the binary checks itself.
         startupProbe:
           exec:
             command:
@@ -107,7 +106,6 @@ spec:
         image: {{ include "krci-substrate.image" (dict "image" .Values.atelet.image "path" "atelet.image") }}
         args:
         {{- if $credentialProvider.enabled }}
-        # Image pull credentials from the node's kubelet credential provider plugin (mounted below).
         - --image-credential-provider-config=/run/image-credential-provider/config.yaml
         - --image-credential-provider-bin-dir=/run/image-credential-provider/bin
         {{- end }}
@@ -186,7 +184,6 @@ spec:
           initialDelaySeconds: 10
           periodSeconds: 10
         volumeMounts:
-        # HostToContainer: mounts made under /var/lib/ate after pod start (snapshots disk, CSI volumes).
         - name: ate-base
           mountPath: /var/lib/ate
           mountPropagation: HostToContainer
@@ -238,7 +235,6 @@ spec:
           path: /dev
           type: Directory
       {{- if $credentialProvider.enabled }}
-      # The kubelet credential provider bin directory and config of the node distribution.
       - name: image-credential-provider-bin
         hostPath:
           path: {{ required "atelet.imageCredentialProvider.binDir is required" $credentialProvider.binDir | quote }}

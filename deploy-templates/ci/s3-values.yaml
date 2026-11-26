@@ -1,7 +1,8 @@
-# Lint values (ct lint, make helm-lint): the required S3 settings, AWS SDK default credentials.
+# No credentialsSecret: AWS SDK default credentials.
 snapshots:
   s3:
     bucket: example-snapshots
     region: eu-central-1
+    prefix: substrate/example-cluster
 apiServer:
   serviceAccountIssuer: https://oidc.eks.eu-central-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE

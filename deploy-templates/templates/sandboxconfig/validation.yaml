@@ -1,5 +1,4 @@
 # Upstream appVersion: manifests/ate-install/sandboxconfig-validation.yaml.
-# Admission checks of every SandboxConfig: the assets each sandbox class needs, for every architecture.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
@@ -15,14 +14,12 @@ spec:
       operations:  ["CREATE", "UPDATE"]
       resources:   ["sandboxconfigs"]
   validations:
-  # gvisor: a "gvisor" release-tarball asset (runsc and its gvisor-bin/ helpers).
   - expression: >-
       object.spec.sandboxClass != 'gvisor' ||
       object.spec.versions.all(v,
         has(v.assets) && size(v.assets) > 0 &&
         v.assets.all(arch, 'gvisor' in v.assets[arch]))
     message: "a gvisor SandboxConfig must define a 'gvisor' (release tarball) asset for every architecture of every version under spec.versions[].assets"
-  # microvm (cloud-hypervisor): its full asset set.
   - expression: >-
       object.spec.sandboxClass != 'microvm' ||
       object.spec.versions.all(v,

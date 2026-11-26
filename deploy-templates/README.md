@@ -1,6 +1,6 @@
 # krci-substrate
 
-![Version: 0.4.0](https://img.shields.io/badge/Version-0.4.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v1.0.1](https://img.shields.io/badge/AppVersion-v1.0.1-informational?style=flat-square)
+![Version: 0.5.0](https://img.shields.io/badge/Version-0.5.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v1.0.1](https://img.shields.io/badge/AppVersion-v1.0.1-informational?style=flat-square)
 
 A Helm chart for upstream Agent Substrate, matching the upstream ate-setup install
 
@@ -70,10 +70,11 @@ Chart objects without an upstream manifest:
 |---|---|---|---|
 | ate-api-server, sidecar `objectstore-plugin` | GCS (`ATE_STORAGE_BACKEND=gcs`, ambient Google credentials) | S3: `ATE_STORAGE_BACKEND=s3`, `AWS_REGION`, optional `AWS_ENDPOINT_URL`, `AWS_S3_USE_PATH_STYLE`; `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` only from `snapshots.s3.credentialsSecret` | Target clusters are EKS and kind. Production: no Secret; AWS SDK default chain with EKS Pod Identity or IRSA. The Secret is for the kind test bed or an S3-compatible store with no workload identity. |
 | ServiceAccount `ate-api-server` | no annotations | `apiServer.serviceAccount.annotations` | IRSA needs `eks.amazonaws.com/role-arn` on the ServiceAccount. Default: no annotations. |
-| ConfigMap `ate-api-server-envvars` | `ATE_API_SNAPSHOT_LOCATION` from `--snapshot-location` | `s3://<snapshots.s3.bucket>/` | S3 bucket. The S3 backend reads the bucket from the URI host. |
+| ConfigMap `ate-api-server-envvars` | `ATE_API_SNAPSHOT_LOCATION` from `--snapshot-location` | `s3://<snapshots.s3.bucket>/<snapshots.s3.prefix>/`; empty prefix: `s3://<snapshots.s3.bucket>/` | S3 bucket. The S3 backend reads the bucket from the URI host. The prefix scopes the IAM policies to one cluster. |
 | ConfigMap `ate-api-authentication` | issuer from GKE coordinates or cluster OIDC discovery | `apiServer.serviceAccountIssuer` | A chart cannot query the cluster. EKS: the cluster OIDC issuer URL. |
 | ConfigMap `ate-otel-config` | `OTEL_EXPORTER_OTLP_ENDPOINT` of the GKE managed collector | no endpoint; `OTEL_TRACES_EXPORTER`, `OTEL_METRICS_EXPORTER`, `ATE_WORKER_OTEL_TRACES_EXPORTER`, `ATE_WORKER_OTEL_METRICS_EXPORTER`: `none` | No collector on the target clusters yet. Logs stay on stdout. |
 | StatefulSet `postgres` | `ate-setup` runs the setup SQL with `kubectl exec` after each rollout | the image entrypoint runs it from `/docker-entrypoint-initdb.d`, on an empty data directory only | No exec under GitOps. An existing volume keeps its roles and schema. |
+| StatefulSet `postgres`, `postStart` hook | waits for the Unix socket, then creates `atepg` when absent | waits for TCP `127.0.0.1:5432` first | The init server of the image is socket-only. A hook during init races the entrypoint `CREATE DATABASE`; a failed hook kills the container before the setup SQL runs, and the restart skips it. |
 | StatefulSet `postgres` | base size: resources and 500Gi claim; StorageClass from `--postgres-storage-class` | `postgres.resources`, `postgres.storage` | Default is the base size. Kind: the upstream kind overlay values. |
 | Every chart object | no Argo CD annotations | `argocd.argoproj.io/sync-wave` | Install order under Argo CD: [Install order](#install-order). |
 | DaemonSet `atelet`, sidecar `objectstore-plugin` | GCS (`ATE_STORAGE_BACKEND=gcs`, ambient Google credentials) | S3, same environment as the ate-api-server sidecar | Same as ate-api-server. |
@@ -94,7 +95,8 @@ Every pod with an `objectstore-plugin` sidecar reads and writes the snapshot buc
 | ate-api-server | `control` | copies snapshots for tags; deletes snapshots nothing refers to | `ate-system/ate-api-server` |
 | atelet | `node` | uploads and downloads snapshot files; reads sandbox assets | `ate-system/atelet` |
 
-- Give S3 access to both ServiceAccounts: one EKS Pod Identity association each, or the IRSA annotation `eks.amazonaws.com/role-arn` in `<service>.serviceAccount.annotations`.
+- Give S3 access to both ServiceAccounts: one EKS Pod Identity association each, or the IRSA annotation `eks.amazonaws.com/role-arn` in `<service>.serviceAccount.annotations`. IAM roles, policies and associations: [EKS](#eks).
+- Objects: `<snapshots.s3.prefix>/atespaces/...`; empty prefix: `atespaces/...`.
 - `snapshots.s3` is the shared S3 environment of both sidecars, `snapshots.s3.credentialsSecret` included.
 - No other pod uses object storage: ate-idp-server, ate-controller, atenet, worker pods.
 
@@ -144,9 +146,14 @@ Namespaces are fixed: `ate-system` and `podcertificate-controller-system`. The r
 
 The chart does not check them.
 
-- Kubernetes 1.37: `certificates.k8s.io/v1beta1` API (PodCertificateRequest) served; feature gates `ClusterTrustBundle`, `ClusterTrustBundleProjection`, `PodCertificateRequest` enabled. Kind: `e2e/kind/cluster.yaml`.
+- Kubernetes 1.37: `certificates.k8s.io` serves `podcertificaterequests` and `clustertrustbundles`, in `v1` or `v1beta1`. Check: `kubectl api-resources --api-group=certificates.k8s.io`. Kind: `e2e/kind/cluster.yaml`.
 - cert-manager with CRDs (`cert-manager.io/v1`).
 - External Secrets Operator with CRDs (`external-secrets.io/v1`).
+- A NetworkPolicy implementation. Without one, the `ate-system` NetworkPolicies have no effect.
+- An S3 bucket, and S3 access for `ate-system/ate-api-server` and `ate-system/atelet`: [S3 access](#s3-access).
+- Egress from the nodes to `storage.googleapis.com:443` (gVisor assets), and from ate-api-server to the `apiServer.serviceAccountIssuer` host.
+
+EKS: [EKS](#eks).
 
 ## PKI
 
@@ -165,10 +172,26 @@ podcertificate-controller starts when `service-dns-ca-pool`, `pod-identity-ca-po
 - ESO copies the renewed certificate into the pool Secret within `pki.externalSecrets.refreshInterval`. The upstream workloads reload the pool within a minute after the kubelet updates the mounted Secret.
 - Renew now: `cmctl renew --namespace <namespace> krci-substrate-<name>`, then annotate the ExternalSecret with `force-sync=<timestamp>`.
 - ESO owns the pool Secrets: edits with `kubectl ate admin` are overwritten at the next refresh.
+- Leaf certificates: podcertificate-controller signs them, kubelet renews them in the pod certificate volumes. No action.
+- No key rotation: each pool has one key, ID `"1"`. A new key breaks trust: leaf certificates and actor JWTs of the old key fail verification. Do not delete a `krci-substrate-*` Secret: cert-manager then issues a new key.
 
-## Deploy with Helm
+Renewal runs by itself. Action is necessary only when a Certificate or an ExternalSecret is not ready. Check:
 
-`snapshots.s3.bucket` and `snapshots.s3.region` are required.
+```bash
+kubectl get certificates.cert-manager.io -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,NOT_AFTER:.status.notAfter,RENEWAL:.status.renewalTime' | grep -E 'NAMESPACE|krci-substrate-'
+kubectl get externalsecrets.external-secrets.io -n ate-system
+kubectl get externalsecrets.external-secrets.io -n podcertificate-controller-system
+```
+
+Expected: six Certificates `READY True`, `RENEWAL` = `NOT_AFTER` minus `pki.certManager.renewBefore`; seven ExternalSecrets `SecretSynced`, `READY True`. A Certificate past `NOT_AFTER`: workloads that verify against it fail TLS; fix cert-manager, then renew now.
+
+## Install
+
+Required values: `snapshots.s3.bucket`, `snapshots.s3.region`, `apiServer.serviceAccountIssuer`.
+
+Argo CD: an Application of this chart, release namespace of your choice (not used). The sync waves order the install: [Install order](#install-order). Argo CD applies `crds/` and updates them on every sync.
+
+Helm:
 
 ```bash
 helm install krci-substrate ./deploy-templates \
@@ -176,7 +199,46 @@ helm install krci-substrate ./deploy-templates \
   --set apiServer.serviceAccountIssuer=<issuer>
 ```
 
-Helm installs `crds/` on first install only; it does not upgrade them.
+- Helm installs `crds/` on first install only; it does not upgrade them.
+- Helm ignores the sync waves. Pods that start before their dependencies restart until those are ready.
+
+## EKS
+
+AWS resources (S3 bucket, IAM roles, Pod Identity associations), preflight checks with expected output, egress and values: [`docs/eks.md`](https://github.com/KubeRocketCI/krci-substrate/blob/main/docs/eks.md).
+
+## Upgrade
+
+Upstream rules ([upgrade runbook](https://github.com/agent-substrate/substrate/blob/v1.0.1/docs/guides/upgrade.md), [version skew policy](https://github.com/agent-substrate/substrate/blob/v1.0.1/docs/reference/version-skew-policy.md)):
+
+- Patch releases: can be skipped. Minor releases: one at a time. A new major release: reinstall.
+- Order, for patch and minor releases: podcertificate-controller; atelet; WorkerPool `spec.workerImage`; ate-api-server and ate-idp-server; CRDs and ate-controller; atenet; SandboxConfig; the rest.
+
+One sync of a new chart version does not keep this order. Wave 3 rolls ate-api-server, ate-idp-server, ate-controller and atenet at the same time ([Install order](#install-order)). The WorkerPools are not chart objects.
+
+Hold groups: image values that keep a service on the old release.
+
+| Group | Image values |
+|---|---|
+| A | `apiServer.image`, `apiServer.objectstorePlugin.image`, `idpServer.image` |
+| B | `controller.image` |
+| C | `router.image`, `router.envoy.image`, `egress.image`, `egress.envoy.image`, `credentialProvider.image` |
+
+1. Back up PostgreSQL: `kubectl -n ate-system exec postgres-0 -c postgres -- pg_dump -U postgres atepg > atepg.sql`. The first new ate-api-server pod migrates the schema. A rollback does not undo it.
+2. Compare `helm template` of the old and the new chart version for the workloads of each group. A new flag, environment variable or mount: the old image cannot run the new template. Do not hold that group; it moves in step 3, out of the upstream order.
+3. Sync the new chart version with groups A, B and C set to the old images. CRDs, SandboxConfig `gvisor-default`, podcertificate-controller and atelet move. Wait: `kubectl -n ate-system rollout status daemonset/atelet`.
+4. Set `spec.workerImage` of every WorkerPool to the new release. Wait until every pool is rolled (upstream runbook, step 3).
+5. Remove group A. Sync. Wait: `kubectl -n ate-system rollout status deployment/ate-api-server deployment/ate-idp-server`.
+6. Remove group B. Sync. Wait: `kubectl -n ate-system rollout status deployment/ate-controller`.
+7. Remove group C. Sync. Wait: `kubectl -n ate-system rollout status deployment/atenet-router deployment/atenet-egress deployment/k8s-credential-provider`.
+8. Install the `kubectl ate` of the new release.
+
+Differences from the upstream order:
+
+- CRDs and SandboxConfig `gvisor-default` apply in step 3, before atelet and the workers.
+- Do not set CRD fields new in the release before step 7 is done.
+- A new `defaultVersion` of `gvisor-default` applies from step 3, also to new actors on workers of the old release.
+
+Rollback: the steps in reverse order, with the old chart version and the hold groups set to the new images. The schema migration is not undone. atelet goes back only after every worker is back on the old image.
 
 ## Maintainers
 
@@ -257,5 +319,6 @@ Helm installs `crds/` on first install only; it does not upgrade them.
 | snapshots.s3.bucket | string | `""` | Required. S3 bucket name rules. |
 | snapshots.s3.credentialsSecret | string | `""` | Existing Secret in ate-system with keys AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY. Credentials come only from a Secret, never from values. Use only for the kind test bed or an S3-compatible store without workload identity. EKS: leave empty (AWS SDK default credential chain) and give S3 access to ate-system/ate-api-server and ate-system/atelet through EKS Pod Identity or IRSA (`<service>.serviceAccount.annotations`). |
 | snapshots.s3.endpoint | string | `""` | AWS_ENDPOINT_URL. Empty: the AWS endpoint of the region. |
+| snapshots.s3.prefix | string | `""` | Key prefix of the snapshot location `s3://<bucket>/<prefix>/`. Path segments of ASCII letters, digits, `_` and `-`, separated by `/`; not `atespaces`. Objects: `<prefix>/atespaces/...`. Empty: `s3://<bucket>/`, objects `atespaces/...`. |
 | snapshots.s3.region | string | `""` | Required. AWS_REGION. |
 | snapshots.s3.usePathStyle | bool | `false` | AWS_S3_USE_PATH_STYLE. Set for MinIO, RustFS and other S3-compatible stores. |

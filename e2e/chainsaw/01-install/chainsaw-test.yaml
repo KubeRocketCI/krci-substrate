@@ -1,11 +1,9 @@
-# The chart objects exist and start: namespaces, CRDs, pool Secrets, trust bundles, workloads, PostgreSQL logins.
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
   name: install
 spec:
   description: Chart objects of the install are present and ready.
-  # Before 02-actor.
   concurrent: false
   # Existing namespace: Chainsaw neither creates nor deletes it.
   namespace: ate-system

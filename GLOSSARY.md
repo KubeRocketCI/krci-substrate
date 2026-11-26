@@ -18,6 +18,10 @@ _Avoid_: golden, baseline, expected manifest
 A file under `manifests/` of upstream; the chart copies its objects unchanged, except where `ate-setup` changes them in the reference install (image references, `--preview=`, flags and annotations it sets) and the chart deviations the chart README lists with a reason.
 _Avoid_: template (for this), raw YAML
 
+**Snapshot location**:
+The S3 URI `s3://<snapshots.s3.bucket>/<snapshots.s3.prefix>/` of ate-api-server `--snapshot-location`. Upstream stores snapshots under `<snapshot location>/atespaces/`.
+_Avoid_: snapshot bucket (for the URI), snapshot path
+
 ## PKI
 
 **Pool Secret**:

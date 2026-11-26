@@ -1,4 +1,3 @@
-# Kind test bed cluster krci-substrate (context kind-krci-substrate).
 # Feature gates, runtimeConfig and kubelet image pulls: upstream appVersion hack/create-kind-cluster.sh.
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4

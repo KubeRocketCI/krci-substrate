@@ -30,19 +30,19 @@ ct-lint: ## Run chart-testing lint against the main branch (needs ct, yamllint, 
 E2E_KIND := bash hack/e2e-kind.sh
 
 .PHONY: e2e-kind-cluster-create
-e2e-kind-cluster-create: ## Create the kind cluster krci-substrate and set proxy ARP on its nodes (needs kind and Docker).
-	$(E2E_KIND) cluster-create
+e2e-kind-cluster-create: kind ## Create the kind cluster krci-substrate and set proxy ARP on its nodes (needs Docker).
+	KIND="$(KIND)" $(E2E_KIND) cluster-create
 
 .PHONY: e2e-kind-cluster-delete
-e2e-kind-cluster-delete: ## Delete the kind cluster krci-substrate (needs kind and Docker).
-	$(E2E_KIND) cluster-delete
+e2e-kind-cluster-delete: kind ## Delete the kind cluster krci-substrate (needs Docker).
+	KIND="$(KIND)" $(E2E_KIND) cluster-delete
 
 .PHONY: e2e-kind-install
 e2e-kind-install: ## Install cert-manager, ESO, the chart and RustFS on kind-krci-substrate.
 	$(E2E_KIND) install
 
 .PHONY: e2e-kind-smoke
-e2e-kind-smoke: chainsaw ## Run the Chainsaw smoke tests (e2e/chainsaw) on kind-krci-substrate.
+e2e-kind-smoke: chainsaw kubectl-ate ## Run the Chainsaw smoke tests (e2e/chainsaw) on kind-krci-substrate.
 	CHAINSAW="$(CHAINSAW)" $(E2E_KIND) smoke
 
 .PHONY: e2e-kind
@@ -52,29 +52,39 @@ LOCALBIN ?= $(shell pwd)/bin
 $(LOCALBIN):
 	mkdir -p "$(LOCALBIN)"
 
-HELMDOCS ?= $(LOCALBIN)/helm-docs
 HELMDOCS_VERSION ?= v1.14.2
-# Same version as the operator repos. CHAINSAW=<path>: use that binary, install nothing.
+# Same version as the operator repos.
 CHAINSAW_VERSION ?= v0.2.15
-CHAINSAW_BIN := $(LOCALBIN)/chainsaw
-CHAINSAW ?= $(CHAINSAW_BIN)
-
-.PHONY: chainsaw
-chainsaw: ## Download chainsaw locally if necessary.
-ifeq ($(CHAINSAW),$(CHAINSAW_BIN))
-chainsaw: $(CHAINSAW_BIN)
-endif
-$(CHAINSAW_BIN): $(LOCALBIN)
-	$(call go-install-tool,$(CHAINSAW_BIN),github.com/kyverno/chainsaw,$(CHAINSAW_VERSION))
+# Supports the node image of e2e/kind/cluster.yaml.
+KIND_VERSION ?= v0.33.0
+HELMDOCS := $(LOCALBIN)/helm-docs
+# CHAINSAW=<path>, KIND=<path>: use that binary, install nothing.
+CHAINSAW ?= $(LOCALBIN)/chainsaw
+KIND ?= $(LOCALBIN)/kind
 
 .PHONY: helmdocs
-helmdocs: $(HELMDOCS) ## Download helm-docs locally if necessary.
-$(HELMDOCS): $(LOCALBIN)
+helmdocs: $(LOCALBIN) ## Install helm-docs into bin/ if necessary.
 	$(call go-install-tool,$(HELMDOCS),github.com/norwoodj/helm-docs/cmd/helm-docs,$(HELMDOCS_VERSION))
 
-# go-install-tool <binary path> <package> <version>: installs as <binary>-<version>, links <binary> to it.
+.PHONY: chainsaw
+chainsaw: $(LOCALBIN) ## Install chainsaw into bin/ if necessary.
+ifeq ($(CHAINSAW),$(LOCALBIN)/chainsaw)
+	$(call go-install-tool,$(CHAINSAW),github.com/kyverno/chainsaw,$(CHAINSAW_VERSION))
+endif
+
+.PHONY: kind
+kind: $(LOCALBIN) ## Install kind into bin/ if necessary.
+ifeq ($(KIND),$(LOCALBIN)/kind)
+	$(call go-install-tool,$(KIND),sigs.k8s.io/kind,$(KIND_VERSION))
+endif
+
+.PHONY: kubectl-ate
+kubectl-ate: ## Install kubectl-ate into .cache/bin/ if necessary.
+	$(E2E_KIND) kubectl-ate
+
+# go-install-tool <binary path> <package> <version>: installs as <binary>-<version> when absent, links <binary> to it.
 define go-install-tool
-@[ -f "$(1)-$(3)" ] && [ "$$(readlink -- "$(1)" 2>/dev/null)" = "$(1)-$(3)" ] || { \
+@[ -f "$(1)-$(3)" ] || { \
 set -e; \
 package=$(2)@$(3) ;\
 echo "Downloading $${package}" ;\

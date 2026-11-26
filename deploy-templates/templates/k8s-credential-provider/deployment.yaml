@@ -34,14 +34,12 @@ spec:
         - "--listen-address=:50051"
         - "--metrics-address=:9090"
         - "--health-address=:9091"
-        # /statusz on loopback: kubectl port-forward only.
         - "--status-address=127.0.0.1:4040"
         # Serves with the servicedns identity (SAN k8s-credential-provider.ate-system.svc). Requires a
         # podidentity client certificate and pins its SAN to the egress gateway
         # (spiffe://cluster.local/ns/ate-system/sa/atenet-egress).
         - "--server-cred-bundle=/run/servicedns.podcert.ate.dev/credential-bundle.pem"
         - "--client-ca-file=/run/podidentity.podcert.ate.dev/trust-bundle.pem"
-        # atespace to namespace authorization, default deny.
         - "--namespace-policy-file=/etc/k8s-credential-provider/namespace-policy.yaml"
         - "--log-level=info"
         - --preview=

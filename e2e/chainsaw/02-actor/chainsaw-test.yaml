@@ -1,4 +1,3 @@
-# One actor through the whole install: ate-api-server, ate-controller, atelet, the S3 snapshot store, atenet-router.
 # Substrate objects (atespace, actor template, actor) are not Kubernetes objects: kubectl ate in script steps.
 # kubectl ate acts as ServiceAccount ate-system/ate-client, a bootstrap owner (apiServer.bootstrapOwners).
 apiVersion: chainsaw.kyverno.io/v1alpha1
@@ -7,7 +6,6 @@ metadata:
   name: actor
 spec:
   description: Golden snapshot, suspend and resume with snapshots in S3, one HTTP request through atenet-router.
-  # After 01-install; failFast stops here when it fails.
   concurrent: false
   # Namespace of the WorkerPool. Chainsaw deletes it after the test only when it created it.
   namespace: krci-substrate-smoke
@@ -17,6 +15,9 @@ spec:
     value: krci-substrate-smoke
   - name: actor
     value: smoke-1
+  # snapshots.s3.bucket and snapshots.s3.prefix of e2e/kind/values.yaml, then the upstream atespaces segment.
+  - name: snapshotRoot
+    value: s3://ate-snapshots/krci-substrate/kind/atespaces/
   steps:
   - name: atespace
     try:
@@ -44,8 +45,19 @@ spec:
             name: smoke
           status:
             # spec.replicas of workerpool.yaml.
-            readyReplicas: 2
+            readyReplicas: 1
             (sandboxClasses[?name == 'gvisor'].configRef.name | [0]): gvisor-default
+    catch:
+    - describe:
+        apiVersion: v1
+        kind: Pod
+        selector: ate.dev/worker-pool=smoke
+    - podLogs:
+        selector: ate.dev/worker-pool=smoke
+        tail: 100
+    - events: {}
+    - script:
+        content: kubectl describe nodes
 
   - name: golden-snapshot
     description: ate-api-server, atelet (mTLS), gVisor assets, objectstore-plugin and S3 build the golden snapshot.
@@ -98,8 +110,7 @@ spec:
         check:
           ($error == null): true
           (json_parse($stdout).status.state): ACTOR_STATE_SUSPENDED
-          # Bucket: snapshots.s3.bucket of e2e/kind/values.yaml.
-          (starts_with(json_parse($stdout).status.snapshots[?owner == 'SNAPSHOT_OWNER_TAG' && durableSnapshot.state == 'SNAPSHOT_STORAGE_STATE_COMPLETED'] | [0].durableSnapshot.object.snapshotUri, 's3://ate-snapshots/')): true
+          (starts_with(json_parse($stdout).status.snapshots[?owner == 'SNAPSHOT_OWNER_TAG' && durableSnapshot.state == 'SNAPSHOT_STORAGE_STATE_COMPLETED'] | [0].durableSnapshot.object.snapshotUri, $snapshotRoot)): true
     cleanup:
     - script:
         env:
@@ -146,6 +157,7 @@ spec:
         check:
           ($error == null): true
           (json_parse($stdout).status.state): ACTOR_STATE_SUSPENDED
+          (starts_with(json_parse($stdout).status.snapshots[?owner == 'SNAPSHOT_OWNER_ACTOR' && durableSnapshot.state == 'SNAPSHOT_STORAGE_STATE_COMPLETED'] | [0].durableSnapshot.object.snapshotUri, $snapshotRoot)): true
         outputs:
         - name: snapshotUri
           value: (json_parse($stdout).status.snapshots[?owner == 'SNAPSHOT_OWNER_ACTOR' && durableSnapshot.state == 'SNAPSHOT_STORAGE_STATE_COMPLETED'] | [0].durableSnapshot.object.snapshotUri)
