@@ -1,0 +1,237 @@
+# One actor through the whole install: ate-api-server, ate-controller, atelet, the S3 snapshot store, atenet-router.
+# Substrate objects (atespace, actor template, actor) are not Kubernetes objects: kubectl ate in script steps.
+# kubectl ate acts as ServiceAccount ate-system/ate-client, a bootstrap owner (apiServer.bootstrapOwners).
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: actor
+spec:
+  description: Golden snapshot, suspend and resume with snapshots in S3, one HTTP request through atenet-router.
+  # After 01-install; failFast stops here when it fails.
+  concurrent: false
+  # Namespace of the WorkerPool. Chainsaw deletes it after the test only when it created it.
+  namespace: krci-substrate-smoke
+  bindings:
+  # Atespace of the template and the actor; kept between runs. Same as metadata.atespace in actor-template.yaml.
+  - name: atespace
+    value: krci-substrate-smoke
+  - name: actor
+    value: smoke-1
+  steps:
+  - name: atespace
+    try:
+    - script:
+        env:
+        - name: ATESPACE
+          value: ($atespace)
+        content: |
+          kubectl ate get atespace "$ATESPACE" >/dev/null 2>&1 || kubectl ate create atespace "$ATESPACE" >/dev/null
+          kubectl ate get atespace "$ATESPACE" -o json
+        check:
+          ($error == null): true
+          (json_parse($stdout).metadata.name): ($atespace)
+
+  - name: workerpool
+    description: ate-controller creates the workers; SandboxConfig gvisor-default resolves.
+    try:
+    - apply:
+        file: workerpool.yaml
+    - assert:
+        resource:
+          apiVersion: ate.dev/v1
+          kind: WorkerPool
+          metadata:
+            name: smoke
+          status:
+            # spec.replicas of workerpool.yaml.
+            readyReplicas: 2
+            (sandboxClasses[?name == 'gvisor'].configRef.name | [0]): gvisor-default
+
+  - name: golden-snapshot
+    description: ate-api-server, atelet (mTLS), gVisor assets, objectstore-plugin and S3 build the golden snapshot.
+    try:
+    - script:
+        env:
+        - name: ATESPACE
+          value: ($atespace)
+        # The first golden snapshot on a node also downloads the gVisor release.
+        timeout: 10m
+        content: |
+          kubectl ate get actor-template smoke -a "$ATESPACE" >/dev/null 2>&1 \
+            || kubectl ate create actor-template -f actor-template.yaml >/dev/null
+          while :; do
+            status="$(kubectl ate get actor-template smoke -a "$ATESPACE" -o json | jq -c '.status.goldenSnapshotStatus // {}')"
+            if echo "$status" | jq -e '.goldenTag.name // .errorMessage' >/dev/null; then echo "$status"; exit 0; fi
+            sleep 5
+          done
+        check:
+          ($error == null): true
+          (json_parse($stdout).errorMessage || ''): ''
+          (json_parse($stdout).goldenTag.name != null): true
+    # Test end, also after a failure. Runs after the actor cleanup: reverse step order.
+    cleanup:
+    - script:
+        env:
+        - name: ATESPACE
+          value: ($atespace)
+        content: |
+          if kubectl ate get actor-template smoke -a "$ATESPACE" >/dev/null 2>&1; then
+            kubectl ate delete actor-template smoke -a "$ATESPACE" >/dev/null
+          fi
+
+  - name: actor-from-golden
+    description: A new actor starts suspended from the golden snapshot in S3.
+    try:
+    - script:
+        env:
+        - name: ATESPACE
+          value: ($atespace)
+        - name: ACTOR
+          value: ($actor)
+        content: |
+          if kubectl ate get actor "$ACTOR" -a "$ATESPACE" >/dev/null 2>&1; then
+            kubectl ate delete actor "$ACTOR" -a "$ATESPACE" >/dev/null
+            while kubectl ate get actor "$ACTOR" -a "$ATESPACE" >/dev/null 2>&1; do sleep 2; done
+          fi
+          kubectl ate create actor "$ACTOR" -a "$ATESPACE" --template smoke >/dev/null
+          kubectl ate get actor "$ACTOR" -a "$ATESPACE" -o json
+        check:
+          ($error == null): true
+          (json_parse($stdout).status.state): ACTOR_STATE_SUSPENDED
+          # Bucket: snapshots.s3.bucket of e2e/kind/values.yaml.
+          (starts_with(json_parse($stdout).status.snapshots[?owner == 'SNAPSHOT_OWNER_TAG' && durableSnapshot.state == 'SNAPSHOT_STORAGE_STATE_COMPLETED'] | [0].durableSnapshot.object.snapshotUri, 's3://ate-snapshots/')): true
+    cleanup:
+    - script:
+        env:
+        - name: ATESPACE
+          value: ($atespace)
+        - name: ACTOR
+          value: ($actor)
+        timeout: 2m
+        # Waits for the delete: the template delete follows.
+        content: |
+          if kubectl ate get actor "$ACTOR" -a "$ATESPACE" >/dev/null 2>&1; then
+            kubectl ate delete actor "$ACTOR" -a "$ATESPACE" >/dev/null
+            while kubectl ate get actor "$ACTOR" -a "$ATESPACE" >/dev/null 2>&1; do sleep 2; done
+          fi
+
+  - name: resume
+    description: ate-api-server places the actor on a worker through atelet.
+    try:
+    - script: &resume
+        env:
+        - name: ATESPACE
+          value: ($atespace)
+        - name: ACTOR
+          value: ($actor)
+        content: |
+          kubectl ate resume actor "$ACTOR" -a "$ATESPACE" >/dev/null
+          kubectl ate get actor "$ACTOR" -a "$ATESPACE" -o json
+        check:
+          ($error == null): true
+          (json_parse($stdout).status.state): ACTOR_STATE_RUNNING
+
+  - name: suspend-to-s3
+    description: atelet objectstore-plugin uploads the actor snapshot to the RustFS fixture with the chart S3 settings.
+    try:
+    - script:
+        env:
+        - name: ATESPACE
+          value: ($atespace)
+        - name: ACTOR
+          value: ($actor)
+        content: |
+          kubectl ate suspend actor "$ACTOR" -a "$ATESPACE" --mode=sync >/dev/null
+          kubectl ate get actor "$ACTOR" -a "$ATESPACE" -o json
+        check:
+          ($error == null): true
+          (json_parse($stdout).status.state): ACTOR_STATE_SUSPENDED
+        outputs:
+        - name: snapshotUri
+          value: (json_parse($stdout).status.snapshots[?owner == 'SNAPSHOT_OWNER_ACTOR' && durableSnapshot.state == 'SNAPSHOT_STORAGE_STATE_COMPLETED'] | [0].durableSnapshot.object.snapshotUri)
+    - script:
+        content: kubectl --namespace ate-system get job rustfs-bucket-init -o jsonpath='{.spec.template.spec.containers[0].image}'
+        outputs:
+        - name: awsCliImage
+          value: ($stdout)
+    # Lists the snapshot objects; grep fails the Job on an empty listing.
+    - apply:
+        resource:
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: rustfs-smoke-client
+            namespace: ate-system
+          spec:
+            backoffLimit: 0
+            template:
+              metadata:
+                labels:
+                  app: rustfs-smoke-client
+              spec:
+                restartPolicy: Never
+                containers:
+                - name: list
+                  image: ($awsCliImage)
+                  command: [sh, -c]
+                  args:
+                  - aws s3 ls --recursive "${SNAPSHOT_URI%/}/" | grep .
+                  envFrom:
+                  - secretRef:
+                      name: rustfs-credentials
+                  env:
+                  - name: SNAPSHOT_URI
+                    value: ($snapshotUri)
+                  - name: AWS_REGION
+                    value: us-east-1
+                  - name: AWS_ENDPOINT_URL
+                    value: http://rustfs.ate-system.svc:9000
+    - assert:
+        resource:
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: rustfs-smoke-client
+            namespace: ate-system
+          status:
+            succeeded: 1
+
+  - name: resume-from-snapshot
+    try:
+    - script: *resume
+
+  - name: http-through-router
+    description: kubectl ate proxy actor authenticates to atenet-router as atenet-client (router.ingressAllowedSpiffeIds).
+    try:
+    - script:
+        env:
+        - name: ATESPACE
+          value: ($atespace)
+        - name: ACTOR
+          value: ($actor)
+        timeout: 2m
+        # Proxy: the kubectl-ate binary, so kill reaches it; output to a file, off the step output.
+        # Watchdog: stops the proxy after 100s, also when Chainsaw kills the shell at the step timeout.
+        # Retries: until 90s. Body of traefik/whoami: a Hostname line.
+        content: |
+          log="$(mktemp)" body="$(mktemp)"
+          kubectl-ate proxy actor "$ACTOR" 18000:80 -a "$ATESPACE" >"$log" 2>&1 &
+          proxy=$!
+          (sleep 100; kill "$proxy") >/dev/null 2>&1 &
+          trap 'kill "$proxy" 2>/dev/null; rm -f "$log" "$body"' EXIT
+          deadline=$(($(date +%s) + 90))
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            if code="$(curl -fsS --max-time 10 --noproxy 127.0.0.1 -o "$body" -w '%{http_code}' http://127.0.0.1:18000/)"; then
+              if grep -q '^Hostname: ' "$body"; then printf '%s' "$code"; exit 0; fi
+              echo "HTTP $code without a Hostname line:" >&2
+              cat "$body" >&2
+              exit 1
+            fi
+            sleep 2
+          done
+          cat "$log" >&2
+          exit 1
+        check:
+          ($error == null): true
+          ($stdout): "200"
+

@@ -42,8 +42,8 @@ e2e-kind-install: ## Install cert-manager, ESO, the chart and RustFS on kind-krc
 	$(E2E_KIND) install
 
 .PHONY: e2e-kind-smoke
-e2e-kind-smoke: ## Run the smoke checks on kind-krci-substrate.
-	$(E2E_KIND) smoke
+e2e-kind-smoke: chainsaw ## Run the Chainsaw smoke tests (e2e/chainsaw) on kind-krci-substrate.
+	CHAINSAW="$(CHAINSAW)" $(E2E_KIND) smoke
 
 .PHONY: e2e-kind
 e2e-kind: e2e-kind-install e2e-kind-smoke ## Install on kind-krci-substrate, then run the smoke checks.
@@ -54,6 +54,18 @@ $(LOCALBIN):
 
 HELMDOCS ?= $(LOCALBIN)/helm-docs
 HELMDOCS_VERSION ?= v1.14.2
+# Same version as the operator repos. CHAINSAW=<path>: use that binary, install nothing.
+CHAINSAW_VERSION ?= v0.2.15
+CHAINSAW_BIN := $(LOCALBIN)/chainsaw
+CHAINSAW ?= $(CHAINSAW_BIN)
+
+.PHONY: chainsaw
+chainsaw: ## Download chainsaw locally if necessary.
+ifeq ($(CHAINSAW),$(CHAINSAW_BIN))
+chainsaw: $(CHAINSAW_BIN)
+endif
+$(CHAINSAW_BIN): $(LOCALBIN)
+	$(call go-install-tool,$(CHAINSAW_BIN),github.com/kyverno/chainsaw,$(CHAINSAW_VERSION))
 
 .PHONY: helmdocs
 helmdocs: $(HELMDOCS) ## Download helm-docs locally if necessary.
