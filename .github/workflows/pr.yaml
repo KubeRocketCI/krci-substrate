@@ -14,7 +14,6 @@ permissions:
   pull-requests: read
 
 env:
-  GOLANG_VERSION: '1.27'
   # Kubernetes version of e2e/kind/cluster.yaml.
   KUBECTL_VERSION: 'v1.37.0'
 
@@ -55,30 +54,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Restore tools
-        id: tools
-        uses: actions/cache/restore@v6
+      - name: Tools
+        uses: ./.github/actions/tools
         with:
-          path: bin
-          key: helm-docs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Makefile') }}
-
-      - name: Set up Go
-        if: steps.tools.outputs.cache-hit != 'true'
-        uses: actions/setup-go@v7
-        with:
-          go-version: ${{ env.GOLANG_VERSION }}
-          check-latest: true
-          cache: false
-
-      - name: Install tools
-        run: make helmdocs
-
-      - name: Save tools
-        if: steps.tools.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: bin
-          key: ${{ steps.tools.outputs.cache-primary-key }}
+          tools: helmdocs
 
       - name: Validate chart docs
         run: make validate-docs
@@ -125,34 +104,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Restore tools
-        id: tools
-        uses: actions/cache/restore@v6
+      - name: Tools
+        uses: ./.github/actions/tools
         with:
-          path: |
-            bin
-            .cache/bin
-          key: e2e-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Makefile', 'hack/e2e-kind.sh') }}
-
-      - name: Set up Go
-        if: steps.tools.outputs.cache-hit != 'true'
-        uses: actions/setup-go@v7
-        with:
-          go-version: ${{ env.GOLANG_VERSION }}
-          check-latest: true
-          cache: false
-
-      - name: Install tools
-        run: make kind chainsaw kubectl-ate
-
-      - name: Save tools
-        if: steps.tools.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: |
-            bin
-            .cache/bin
-          key: ${{ steps.tools.outputs.cache-primary-key }}
+          tools: kind chainsaw kubectl-ate
 
       - name: Set up Helm
         uses: azure/setup-helm@v4

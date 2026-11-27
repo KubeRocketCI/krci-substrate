@@ -3,6 +3,7 @@
 #   cluster-create, cluster-delete  need kind and Docker.
 #   install                         needs kubectl, helm and jq; no Docker.
 #   kubectl-ate                     downloads kubectl-ate into .cache/bin; needs curl.
+#   kubectl-ate-version             prints KUBECTL_ATE_VERSION.
 #   smoke                           needs kubectl, jq, curl and chainsaw; no Docker.
 # KIND, CHAINSAW: binary paths; default kind on PATH, bin/chainsaw. make installs both into bin/ with Go.
 # Every command is idempotent. No other kubeconfig or cluster is used.
@@ -146,6 +147,7 @@ case "${1:-}" in
   cluster-delete) cluster_delete ;;
   install) install_all ;;
   kubectl-ate) kubectl_ate_install ;;
+  kubectl-ate-version) echo "${KUBECTL_ATE_VERSION}" ;;
   smoke) smoke ;;
-  *) echo "Usage: $0 cluster-create|cluster-delete|install|kubectl-ate|smoke" >&2; exit 2 ;;
+  *) echo "Usage: $0 cluster-create|cluster-delete|install|kubectl-ate|kubectl-ate-version|smoke" >&2; exit 2 ;;
 esac

@@ -1,0 +1,52 @@
+name: Tools
+description: Restore, install and save the Makefile tools in bin/ and .cache/bin/. Cache key = the tool versions.
+inputs:
+  tools:
+    description: Makefile tool targets, separated by spaces (helmdocs, kind, chainsaw, kubectl-ate).
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Cache key
+      id: key
+      shell: bash
+      env:
+        TOOLS: ${{ inputs.tools }}
+      run: |
+        set -euo pipefail
+        versions="$(make -s tools-key TOOLS="${TOOLS}")"
+        echo "key=tools-${RUNNER_OS}-${RUNNER_ARCH}-${versions}" >> "${GITHUB_OUTPUT}"
+
+    - name: Restore tools
+      id: restore
+      uses: actions/cache/restore@v6
+      with:
+        path: |
+          bin
+          .cache/bin
+        key: ${{ steps.key.outputs.key }}
+
+    # Cache miss only: go install of the Makefile tools.
+    - name: Set up Go
+      if: steps.restore.outputs.cache-hit != 'true'
+      uses: actions/setup-go@v7
+      with:
+        go-version: '1.27'
+        check-latest: true
+        cache: false
+
+    # Cache hit: links bin/<tool> to bin/<tool>-<version>, installs nothing.
+    - name: Install tools
+      shell: bash
+      env:
+        TOOLS: ${{ inputs.tools }}
+      run: make ${TOOLS}
+
+    - name: Save tools
+      if: steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: |
+          bin
+          .cache/bin
+        key: ${{ steps.key.outputs.key }}
