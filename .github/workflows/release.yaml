@@ -1,0 +1,45 @@
+# GitHub release of a tag vX.Y.Z. The KRCI release pipeline pushes the tag after it publishes chart X.Y.Z.
+name: "release"
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Tools
+        uses: ./.github/actions/tools
+        with:
+          tools: git-chglog
+
+      - name: Release notes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          {
+            echo "Helm chart \`krci-substrate\` ${TAG#v}: \`helm repo add epamedp https://epam.github.io/edp-helm-charts/stable\`."
+            echo
+            bin/git-chglog --template .chglog/release.tpl.md "${TAG}"
+          } > release.md
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "${TAG}" --verify-tag --title "${TAG}" --notes-file release.md

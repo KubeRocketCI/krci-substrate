@@ -18,9 +18,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # Same tool sets as the jobs of pr.yaml.
+        # Same tool sets as the jobs of pr.yaml and release.yaml.
         tools:
           - helmdocs
+          - git-chglog
           - kind chainsaw kubectl-ate
     steps:
       - name: Checkout

@@ -14,6 +14,14 @@ helm-docs: helmdocs ## Generate deploy-templates/README.md from README.md.gotmpl
 validate-docs: helm-docs ## Fail if the generated chart docs are out of date.
 	@git diff -s --exit-code $(CHART_DIR)/README.md || (echo "Run 'make helm-docs' to address the issue." && git diff && exit 1)
 
+.PHONY: changelog
+changelog: git-chglog ## Generate CHANGELOG.md; NEXT_RELEASE_TAG=X.Y.Z puts unreleased commits under vX.Y.Z.
+ifneq ($(NEXT_RELEASE_TAG),)
+	"$(GITCHGLOG)" --next-tag v$(NEXT_RELEASE_TAG) -o CHANGELOG.md
+else
+	"$(GITCHGLOG)" -o CHANGELOG.md
+endif
+
 .PHONY: helm-lint
 helm-lint: ## Run helm lint and render the chart with each values file in deploy-templates/ci/.
 	@set -e; for values in $(CHART_DIR)/ci/*-values.yaml; do \
@@ -54,10 +62,13 @@ $(LOCALBIN):
 
 HELMDOCS_VERSION ?= v1.14.2
 # Same version as the operator repos.
+GITCHGLOG_VERSION ?= v0.15.4
+# Same version as the operator repos.
 CHAINSAW_VERSION ?= v0.2.15
 # Supports the node image of e2e/kind/cluster.yaml.
 KIND_VERSION ?= v0.33.0
 HELMDOCS := $(LOCALBIN)/helm-docs
+GITCHGLOG := $(LOCALBIN)/git-chglog
 # CHAINSAW=<path>, KIND=<path>: use that binary, install nothing.
 CHAINSAW ?= $(LOCALBIN)/chainsaw
 KIND ?= $(LOCALBIN)/kind
@@ -65,6 +76,10 @@ KIND ?= $(LOCALBIN)/kind
 .PHONY: helmdocs
 helmdocs: $(LOCALBIN) ## Install helm-docs into bin/ if necessary.
 	$(call go-install-tool,$(HELMDOCS),github.com/norwoodj/helm-docs/cmd/helm-docs,$(HELMDOCS_VERSION))
+
+.PHONY: git-chglog
+git-chglog: $(LOCALBIN) ## Install git-chglog into bin/ if necessary.
+	$(call go-install-tool,$(GITCHGLOG),github.com/git-chglog/git-chglog/cmd/git-chglog,$(GITCHGLOG_VERSION))
 
 .PHONY: chainsaw
 chainsaw: $(LOCALBIN) ## Install chainsaw into bin/ if necessary.
@@ -83,6 +98,7 @@ kubectl-ate: ## Install kubectl-ate into .cache/bin/ if necessary.
 	$(E2E_KIND) kubectl-ate
 
 TOOL_VERSION_helmdocs = $(HELMDOCS_VERSION)
+TOOL_VERSION_git-chglog = $(GITCHGLOG_VERSION)
 TOOL_VERSION_chainsaw = $(CHAINSAW_VERSION)
 TOOL_VERSION_kind = $(KIND_VERSION)
 TOOL_VERSION_kubectl-ate = $(shell $(E2E_KIND) kubectl-ate-version)

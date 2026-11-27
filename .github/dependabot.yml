@@ -1,0 +1,12 @@
+# Security updates only (open-pull-requests-limit: 0). Image tags and digests follow the upstream release, not Dependabot.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directories:
+      - "/"
+      - "/.github/actions/*"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+    open-pull-requests-limit: 0

@@ -2,7 +2,7 @@ name: Tools
 description: Restore, install and save the Makefile tools in bin/ and .cache/bin/. Cache key = the tool versions.
 inputs:
   tools:
-    description: Makefile tool targets, separated by spaces (helmdocs, kind, chainsaw, kubectl-ate).
+    description: Makefile tool targets, separated by spaces (helmdocs, git-chglog, kind, chainsaw, kubectl-ate).
     required: true
 runs:
   using: composite
