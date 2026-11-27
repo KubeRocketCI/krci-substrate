@@ -1,4 +1,4 @@
-# Upstream appVersion: the ConfigMap of manifests/ate-install/atenet-egress.yaml.
+# Upstream: the ConfigMap of manifests/ate-install/atenet-egress.yaml.
 # envoy.yaml: files/atenet-egress/envoy.yaml. Envoy reads it at start only: annotation checksum/config.
 # Chart changes: with egress.upstreamCA, the upstream TLS clusters trust the bundle of
 # templates/atenet-egress/deployment.yaml instead of the image system roots.

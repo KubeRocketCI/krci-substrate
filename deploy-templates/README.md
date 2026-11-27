@@ -1,6 +1,6 @@
 # krci-substrate
 
-![Version: 0.5.0](https://img.shields.io/badge/Version-0.5.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v1.0.1](https://img.shields.io/badge/AppVersion-v1.0.1-informational?style=flat-square)
+![Version: 0.5.0-SNAPSHOT](https://img.shields.io/badge/Version-0.5.0--SNAPSHOT-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.5.0-SNAPSHOT](https://img.shields.io/badge/AppVersion-0.5.0--SNAPSHOT-informational?style=flat-square)
 
 A Helm chart for upstream Agent Substrate, matching the upstream ate-setup install
 
@@ -8,7 +8,7 @@ A Helm chart for upstream Agent Substrate, matching the upstream ate-setup insta
 
 ## Introduction
 
-The chart installs objects of [Agent Substrate](https://github.com/agent-substrate/substrate) `v1.0.1`, the release named by `appVersion`.
+The chart installs objects of [Agent Substrate](https://github.com/agent-substrate/substrate) release `v1.0.1`. The chart `version` and `appVersion` are the chart release.
 Each chart object copied from upstream equals its reference install object: what upstream `ate-setup deploy ate-system` applies for that release, with the envoy dataplane on a non-kind cluster. Exceptions: [Deviations from the reference install](#deviations-from-the-reference-install).
 
 Objects copied from the upstream manifests of the release tag:

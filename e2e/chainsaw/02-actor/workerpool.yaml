@@ -1,4 +1,4 @@
-# Shape: upstream appVersion demos/counter/counter.yaml.tmpl.
+# Shape: upstream demos/counter/counter.yaml.tmpl.
 apiVersion: ate.dev/v1
 kind: WorkerPool
 metadata:

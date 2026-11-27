@@ -1,6 +1,6 @@
 # krci-substrate on Amazon EKS
 
-What the AWS side and the cluster must provide before the chart installs on EKS. Sources: the chart `appVersion` (upstream `v1.0.1`) and `deploy-templates/`.
+What the AWS side and the cluster must provide before the chart installs on EKS. Sources: upstream release `v1.0.1` and `deploy-templates/`.
 
 Placeholders:
 

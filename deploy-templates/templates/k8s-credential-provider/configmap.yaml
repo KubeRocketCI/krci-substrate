@@ -1,4 +1,4 @@
-# Upstream appVersion: manifests/egress-credential-injection/namespace-policy.yaml.
+# Upstream: manifests/egress-credential-injection/namespace-policy.yaml.
 # Chart changes: policies from credentialProvider.namespacePolicies; the chart owns the ConfigMap.
 # Default deny: an atespace not listed resolves no Secret.
 apiVersion: v1

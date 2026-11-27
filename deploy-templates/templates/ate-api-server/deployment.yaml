@@ -1,4 +1,4 @@
-# Upstream appVersion: the Deployment of manifests/ate-install/ate-api-server.yaml.
+# Upstream: the Deployment of manifests/ate-install/ate-api-server.yaml.
 # Reference install changes: release images, --preview=, --authz-bootstrap-owners, annotation ate.dev/env-hash (ate-setup).
 # Chart changes: S3 on the objectstore-plugin sidecar (snapshots.s3); ate.dev/env-hash is the sha256 of rendered config.yaml.
 apiVersion: apps/v1

@@ -1,4 +1,4 @@
-# Upstream appVersion: the ClusterRole and ClusterRoleBinding of manifests/egress-credential-injection/k8s-credential-provider.yaml.
+# Upstream: the ClusterRole and ClusterRoleBinding of manifests/egress-credential-injection/k8s-credential-provider.yaml.
 # Read on Secrets in every namespace: a namespace policy can name a Secret in any namespace.
 # The only component of egress credential injection with Kubernetes access.
 apiVersion: rbac.authorization.k8s.io/v1

@@ -1,4 +1,4 @@
-# Upstream appVersion: the Service of manifests/ate-install/ate-api-server.yaml.
+# Upstream: the Service of manifests/ate-install/ate-api-server.yaml.
 apiVersion: v1
 kind: Service
 metadata:

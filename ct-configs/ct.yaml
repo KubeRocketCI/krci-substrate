@@ -5,4 +5,5 @@ chart-dirs:
   - .
 helm-extra-args: --timeout 600s
 validate-maintainers: false
-check-version-increment: true
+# Chart versions: KRCI CI; main stays at X.Y.Z-SNAPSHOT.
+check-version-increment: false

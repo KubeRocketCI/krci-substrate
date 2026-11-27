@@ -1,4 +1,4 @@
-# Upstream appVersion: the PodDisruptionBudget of manifests/ate-install/ate-idp-server.yaml.
+# Upstream: the PodDisruptionBudget of manifests/ate-install/ate-idp-server.yaml.
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:

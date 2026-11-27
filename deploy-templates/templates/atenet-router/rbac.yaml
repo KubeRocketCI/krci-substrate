@@ -1,4 +1,4 @@
-# Upstream appVersion: the Role and RoleBinding of manifests/ate-install/atenet-router.yaml.
+# Upstream: the Role and RoleBinding of manifests/ate-install/atenet-router.yaml.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:

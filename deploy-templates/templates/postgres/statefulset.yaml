@@ -1,4 +1,4 @@
-# Upstream appVersion: the StatefulSet of manifests/ate-install/postgres/postgres.yaml.
+# Upstream: the StatefulSet of manifests/ate-install/postgres/postgres.yaml.
 # Reference install changes: claim StorageClass (ate-setup --postgres-storage-class).
 # Chart changes: postgres.resources, postgres.storage; volume setup at /docker-entrypoint-initdb.d
 # (ConfigMap postgres-setup, ADR-0002); postStart waits for TCP.
