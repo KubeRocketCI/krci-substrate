@@ -372,5 +372,6 @@ kubectl -n ate-system get configmap ate-api-server-envvars -o jsonpath='{.data.A
 
 Expected: a log line `Using S3 storage backend`; `s3://<bucket>/<prefix>/`.
 
-- S3 access of both roles: a golden snapshot (ate-api-server copies it to a tag) and a suspended actor (atelet uploads it). The kind smoke test `e2e/chainsaw/02-actor` does both. It lists objects through the RustFS fixture: it does not run on EKS as is.
+- S3 access of both roles: a golden snapshot (ate-api-server copies it to a tag) and a suspended actor (atelet uploads it). The smoke tests run on the kind test bed only.
+- Objects in the bucket, with your own AWS credentials: `aws s3 ls --recursive <location>atespaces/`; `<location>`: the `ATE_API_SNAPSHOT_LOCATION` output above.
 - `AccessDenied` in the `objectstore-plugin` logs of `deployment/ate-api-server` or `daemonset/atelet`: check the association, the trust policy conditions and `<keys>`.
