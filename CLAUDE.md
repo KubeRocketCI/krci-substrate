@@ -27,7 +27,7 @@ deploy-templates/templates/pki/  cert-manager and ESO objects of the pool Secret
 deploy-templates/files/      upstream files the templates embed, byte for byte (postgres/setup.sql, atenet-egress/envoy.yaml)
 deploy-templates/ci/         lint values: make helm-lint, ct lint
 ct-configs/                  chart-testing and yamllint config
-docs/eks.md                  EKS: S3 bucket, IAM roles, Pod Identity associations, preflight, egress
+docs/eks.md                  EKS: S3 bucket, IAM roles, Pod Identity, Terraform, actor images (ECR), preflight, egress, install and end-to-end checks
 e2e/kind/                    kind test bed: cluster config, dependency values, fixtures; not part of the chart
 e2e/chainsaw/                smoke tests of an installed chart (Chainsaw), in directory order: 01-install, 02-actor
 hack/e2e-kind.sh             kind test bed driver; versions of cert-manager and ESO at the top
