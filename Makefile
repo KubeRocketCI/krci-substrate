@@ -82,6 +82,15 @@ endif
 kubectl-ate: ## Install kubectl-ate into .cache/bin/ if necessary.
 	$(E2E_KIND) kubectl-ate
 
+TOOL_VERSION_helmdocs = $(HELMDOCS_VERSION)
+TOOL_VERSION_chainsaw = $(CHAINSAW_VERSION)
+TOOL_VERSION_kind = $(KIND_VERSION)
+TOOL_VERSION_kubectl-ate = $(shell $(E2E_KIND) kubectl-ate-version)
+
+.PHONY: tools-key
+tools-key: ## Print <tool>-<version> of each tool target in TOOLS, joined by '-' (CI cache key).
+	@echo $(foreach tool,$(or $(TOOLS),$(error TOOLS is required)),$(tool)-$(or $(TOOL_VERSION_$(tool)),$(error no version for tool $(tool)))) | tr ' ' '-'
+
 # go-install-tool <binary path> <package> <version>: installs as <binary>-<version> when absent, links <binary> to it.
 define go-install-tool
 @[ -f "$(1)-$(3)" ] || { \

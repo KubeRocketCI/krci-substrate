@@ -14,7 +14,7 @@ make ct-lint        # chart-testing lint against main (ct, yamllint, yamale on P
 make e2e-kind       # kind test bed: install on kind-krci-substrate, then smoke
 ```
 
-Kind test bed (`hack/e2e-kind.sh`): `make e2e-kind-cluster-create` / `e2e-kind-cluster-delete` need Docker and Go, install kind into `bin/` (or use `KIND=<path>`); `make e2e-kind-install` needs kubectl, helm and jq; `make e2e-kind-smoke` needs kubectl, jq, curl and Go, installs chainsaw into `bin/` (or uses `CHAINSAW=<path>`) and kubectl-ate into `.cache/bin/`, and runs the Chainsaw tests of `e2e/chainsaw/`. Tools: versions pinned in `Makefile` (helm-docs, chainsaw, kind) and `hack/e2e-kind.sh` (kubectl-ate); installed as `<tool>-<version>`, so a version change installs the new one. Kubeconfig: `.cache/kind-krci-substrate.kubeconfig` only. `HELM_CA_FILE`: optional CA bundle for the chart registries.
+Kind test bed (`hack/e2e-kind.sh`): `make e2e-kind-cluster-create` / `e2e-kind-cluster-delete` need Docker and Go, install kind into `bin/` (or use `KIND=<path>`); `make e2e-kind-install` needs kubectl, helm and jq; `make e2e-kind-smoke` needs kubectl, jq, curl and Go, installs chainsaw into `bin/` (or uses `CHAINSAW=<path>`) and kubectl-ate into `.cache/bin/`, and runs the Chainsaw tests of `e2e/chainsaw/`. Tools: versions pinned in `Makefile` (helm-docs, chainsaw, kind) and `hack/e2e-kind.sh` (kubectl-ate); installed as `<tool>-<version>`, so a version change installs the new one. CI cache key: `make tools-key TOOLS="<targets>"`, the tool versions only; a new tool gets a `TOOL_VERSION_<target>` in `Makefile`. Kubeconfig: `.cache/kind-krci-substrate.kubeconfig` only. `HELM_CA_FILE`: optional CA bundle for the chart registries.
 
 ## Layout
 
@@ -32,6 +32,8 @@ e2e/kind/                    kind test bed: cluster config, dependency values, f
 e2e/chainsaw/                smoke tests of an installed chart (Chainsaw), in directory order: 01-install, 02-actor
 hack/e2e-kind.sh             kind test bed driver; versions of cert-manager and ESO at the top
 .github/workflows/pr.yaml    commit title, helm-docs, chart-testing lint, kind test bed with Chainsaw tests
+.github/workflows/tools-cache.yaml  tool caches of main (pull requests restore them); same tool sets as pr.yaml
+.github/actions/tools/       restore, install and save Makefile tools; cache key from make tools-key
 ```
 
 ## Conventions
