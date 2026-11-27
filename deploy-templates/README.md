@@ -1,6 +1,6 @@
 # krci-substrate
 
-![Version: 0.5.0-SNAPSHOT](https://img.shields.io/badge/Version-0.5.0--SNAPSHOT-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.5.0-SNAPSHOT](https://img.shields.io/badge/AppVersion-0.5.0--SNAPSHOT-informational?style=flat-square)
+![Version: 0.6.0-SNAPSHOT](https://img.shields.io/badge/Version-0.6.0--SNAPSHOT-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.6.0-SNAPSHOT](https://img.shields.io/badge/AppVersion-0.6.0--SNAPSHOT-informational?style=flat-square)
 
 A Helm chart for upstream Agent Substrate, matching the upstream ate-setup install
 
