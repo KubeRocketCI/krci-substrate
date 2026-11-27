@@ -22,11 +22,18 @@ The chart is in [`deploy-templates/`](deploy-templates/); its documentation is [
 
 AWS resources (S3 bucket, IAM roles, Pod Identity associations), cluster preflight and egress: [`docs/eks.md`](docs/eks.md).
 
+## Releases
+
+Chart releases: `https://epam.github.io/edp-helm-charts/stable`. Changes per release: [CHANGELOG.md](CHANGELOG.md) and the GitHub releases.
+
 ## Development
+
+Contributions: [CONTRIBUTING.md](CONTRIBUTING.md). Vulnerabilities: [SECURITY.md](SECURITY.md).
 
 ```bash
 make helm-docs   # regenerate deploy-templates/README.md
 make helm-lint   # lint and render the chart
+make changelog   # regenerate CHANGELOG.md from the commit titles; needs a v* tag or NEXT_RELEASE_TAG=X.Y.Z
 ```
 
 ### Kind test bed
