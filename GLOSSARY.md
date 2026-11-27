@@ -7,11 +7,11 @@ Substrate terms (actor, worker, worker pool, snapshot, egress gateway): the `krc
 ## Chart
 
 **Upstream**:
-The Agent Substrate repository, `github.com/agent-substrate/substrate`, at the release tag the chart `appVersion` names.
+The Agent Substrate repository, `github.com/agent-substrate/substrate`, at release tag `v1.0.1`. The image tags in `deploy-templates/values.yaml` and the upstream links in `deploy-templates/README.md.gotmpl` name the same tag. The chart `version` and `appVersion` are the chart release, not the upstream release.
 _Avoid_: kagent, fork, source (alone)
 
 **Reference install**:
-The objects `ate-setup deploy ate-system` applies for the chart `appVersion` with the envoy dataplane on a non-kind cluster. Every chart object copied from an upstream manifest equals its reference install object, apart from the chart deviations the chart README lists.
+The objects `ate-setup deploy ate-system` applies for the upstream release with the envoy dataplane on a non-kind cluster. Every chart object copied from an upstream manifest equals its reference install object, apart from the chart deviations the chart README lists.
 _Avoid_: golden, baseline, expected manifest
 
 **Upstream manifest**:

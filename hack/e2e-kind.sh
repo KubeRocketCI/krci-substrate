@@ -13,7 +13,7 @@ readonly CERT_MANAGER_VERSION="v1.21.2"
 readonly EXTERNAL_SECRETS_VERSION="2.14.0"
 readonly CERT_MANAGER_CHART="oci://quay.io/jetstack/charts/cert-manager"
 readonly EXTERNAL_SECRETS_CHART="oci://ghcr.io/external-secrets/charts/external-secrets"
-# kubectl-ate release binary; keep at the chart appVersion.
+# kubectl-ate release binary; keep at the upstream release (GLOSSARY.md, Upstream).
 readonly KUBECTL_ATE_VERSION="v1.0.1"
 readonly KUBECTL_ATE_RELEASES="https://github.com/agent-substrate/substrate/releases/download"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

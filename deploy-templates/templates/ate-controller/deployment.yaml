@@ -1,4 +1,4 @@
-# Upstream appVersion: the Deployment of manifests/ate-install/ate-controller.yaml.
+# Upstream: the Deployment of manifests/ate-install/ate-controller.yaml.
 # Reference install changes: release image, --preview= (ate-setup).
 kind: Deployment
 apiVersion: apps/v1

@@ -1,4 +1,4 @@
-# Upstream appVersion: the Deployment of manifests/ate-install/pod-certificate-controller.yaml.
+# Upstream: the Deployment of manifests/ate-install/pod-certificate-controller.yaml.
 # Reference install changes: release image, --preview= (ate-setup).
 apiVersion: apps/v1
 kind: Deployment

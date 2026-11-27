@@ -1,4 +1,4 @@
-# Upstream appVersion: the ClusterRole and Role of manifests/ate-install/generated/role.yaml,
+# Upstream: the ClusterRole and Role of manifests/ate-install/generated/role.yaml,
 # the ClusterRoleBinding and RoleBinding of manifests/ate-install/ate-controller.yaml.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

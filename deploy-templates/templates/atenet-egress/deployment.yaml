@@ -1,4 +1,4 @@
-# Upstream appVersion: the Deployment of manifests/ate-install/atenet-egress.yaml.
+# Upstream: the Deployment of manifests/ate-install/atenet-egress.yaml.
 # Reference install changes (ate-setup, --credential-provider={"name":"k8s.io"}): release images,
 # --credential-provider-* flags of k8s-credential-provider in place of #ATE_EGRESS_INJECT_FLAGS, --preview=.
 # Chart changes: annotation checksum/config; egress.replicas; with egress.upstreamCA, init container

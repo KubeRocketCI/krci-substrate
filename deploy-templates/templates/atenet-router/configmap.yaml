@@ -1,4 +1,4 @@
-# Upstream appVersion: the ConfigMap of manifests/ate-install/atenet-router.yaml.
+# Upstream: the ConfigMap of manifests/ate-install/atenet-router.yaml.
 # Bootstrap only: atenet-router serves listeners and clusters over xDS. Envoy reads it at start only:
 # annotation checksum/config.
 apiVersion: v1

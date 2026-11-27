@@ -1,4 +1,4 @@
-# Defaults: reference install of the chart appVersion. Bump image tags and digests with it.
+# Defaults: reference install of upstream release v1.0.1. Image tags and digests: that release.
 
 podcertificateController:
   image:

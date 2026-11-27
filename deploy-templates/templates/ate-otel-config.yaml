@@ -1,4 +1,4 @@
-# Upstream appVersion: the ConfigMap of manifests/ate-install/ate-otel-config.yaml.
+# Upstream: the ConfigMap of manifests/ate-install/ate-otel-config.yaml.
 # Chart change: OTLP export off. No OTEL_EXPORTER_OTLP_ENDPOINT; traces and metrics exporters `none`
 # (internal/serverboot) for the control plane and, through ate-controller, the worker pods. Logs: stdout.
 # Read through envFrom by ate-api-server, ate-controller, atelet, atenet-router, atenet-egress.

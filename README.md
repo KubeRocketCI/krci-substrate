@@ -2,7 +2,7 @@
 
 Helm chart for [Agent Substrate](https://github.com/agent-substrate/substrate), for GitOps-managed KubeRocketCI clusters. Clusters consume it through [edp-cluster-add-ons](https://github.com/epam/edp-cluster-add-ons), the KubeRocketCI Argo CD add-ons catalog.
 
-Each chart object copied from upstream equals its reference install object: what upstream `ate-setup deploy ate-system` applies for the release in the chart `appVersion` (envoy dataplane, non-kind cluster), apart from the deviations listed in the chart documentation. Objects are copied from the upstream manifests of that release tag.
+Each chart object copied from upstream equals its reference install object: what upstream `ate-setup deploy ate-system` applies for upstream release `v1.0.1` (envoy dataplane, non-kind cluster), apart from the deviations listed in the chart documentation. Objects are copied from the upstream manifests of that release tag.
 
 The chart is in [`deploy-templates/`](deploy-templates/); its documentation is [`deploy-templates/README.md`](deploy-templates/README.md).
 

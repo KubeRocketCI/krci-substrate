@@ -1,4 +1,4 @@
-# Upstream appVersion: the Deployment of manifests/ate-install/atenet-router.yaml.
+# Upstream: the Deployment of manifests/ate-install/atenet-router.yaml.
 # Reference install changes (ate-setup): release images, --ingress-allowed-spiffe-ids when set, --preview=.
 # Chart changes: annotation checksum/config; router.replicas.
 {{- $allowed := .Values.router.ingressAllowedSpiffeIds | default list }}

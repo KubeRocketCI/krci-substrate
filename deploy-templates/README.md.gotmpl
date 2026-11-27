@@ -10,7 +10,7 @@
 
 ## Introduction
 
-The chart installs objects of [Agent Substrate](https://github.com/agent-substrate/substrate) `{{ .AppVersion }}`, the release named by `appVersion`.
+The chart installs objects of [Agent Substrate](https://github.com/agent-substrate/substrate) release `v1.0.1`. The chart `version` and `appVersion` are the chart release.
 Each chart object copied from upstream equals its reference install object: what upstream `ate-setup deploy ate-system` applies for that release, with the envoy dataplane on a non-kind cluster. Exceptions: [Deviations from the reference install](#deviations-from-the-reference-install).
 
 Objects copied from the upstream manifests of the release tag:
@@ -210,7 +210,7 @@ AWS resources (S3 bucket, IAM roles, Pod Identity associations), preflight check
 
 ## Upgrade
 
-Upstream rules ([upgrade runbook](https://github.com/agent-substrate/substrate/blob/{{ .AppVersion }}/docs/guides/upgrade.md), [version skew policy](https://github.com/agent-substrate/substrate/blob/{{ .AppVersion }}/docs/reference/version-skew-policy.md)):
+Upstream rules ([upgrade runbook](https://github.com/agent-substrate/substrate/blob/v1.0.1/docs/guides/upgrade.md), [version skew policy](https://github.com/agent-substrate/substrate/blob/v1.0.1/docs/reference/version-skew-policy.md)):
 
 - Patch releases: can be skipped. Minor releases: one at a time. A new major release: reinstall.
 - Order, for patch and minor releases: podcertificate-controller; atelet; WorkerPool `spec.workerImage`; ate-api-server and ate-idp-server; CRDs and ate-controller; atenet; SandboxConfig; the rest.

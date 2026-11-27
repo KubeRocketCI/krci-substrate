@@ -1,4 +1,4 @@
-# Upstream appVersion: the DaemonSet of manifests/ate-install/atelet.yaml.
+# Upstream: the DaemonSet of manifests/ate-install/atelet.yaml.
 # Reference install changes: release images, --preview= (ate-setup).
 # Chart changes: S3 on the objectstore-plugin sidecar (snapshots.s3); image credential provider paths
 # (atelet.imageCredentialProvider).

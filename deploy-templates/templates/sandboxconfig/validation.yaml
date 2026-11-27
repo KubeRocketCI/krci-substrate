@@ -1,4 +1,4 @@
-# Upstream appVersion: manifests/ate-install/sandboxconfig-validation.yaml.
+# Upstream: manifests/ate-install/sandboxconfig-validation.yaml.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
@@ -29,7 +29,7 @@ spec:
             .all(name, name in v.assets[arch])))
     message: "a microvm SandboxConfig must define cloud-hypervisor, virtiofsd, kata-kernel, and kata-image assets for every architecture of every version under spec.versions[].assets"
 ---
-# Upstream appVersion: manifests/ate-install/sandboxconfig-validation.yaml.
+# Upstream: manifests/ate-install/sandboxconfig-validation.yaml.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
 metadata:

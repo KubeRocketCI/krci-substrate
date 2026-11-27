@@ -1,4 +1,4 @@
-# Upstream appVersion: the Deployment of manifests/ate-install/ate-idp-server.yaml.
+# Upstream: the Deployment of manifests/ate-install/ate-idp-server.yaml.
 # Reference install changes: release image, --issuer (installdefaults.ActorJWTIssuer), --preview= (ate-setup).
 apiVersion: apps/v1
 kind: Deployment

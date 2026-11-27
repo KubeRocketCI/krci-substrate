@@ -1,4 +1,4 @@
-# Protojson form (Substrate API, not a Kubernetes object). Shape: upstream appVersion demos/counter/counter-template.yaml.tmpl.
+# Protojson form (Substrate API, not a Kubernetes object). Shape: upstream demos/counter/counter-template.yaml.tmpl.
 # traefik/whoami: multi-arch HTTP server on port 80, answers every path with 200; pinned by digest.
 metadata:
   # Same as binding atespace in chainsaw-test.yaml.

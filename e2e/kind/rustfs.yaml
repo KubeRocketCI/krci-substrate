@@ -1,5 +1,5 @@
 # RustFS S3 fixture for the kind test bed; not part of the chart.
-# Objects: upstream appVersion manifests/ate-install/kind/rustfs.yaml; credentials: Secret rustfs-credentials.
+# Objects: upstream manifests/ate-install/kind/rustfs.yaml; credentials: Secret rustfs-credentials.
 # Applied after the chart creates ate-system.
 apiVersion: v1
 kind: Secret

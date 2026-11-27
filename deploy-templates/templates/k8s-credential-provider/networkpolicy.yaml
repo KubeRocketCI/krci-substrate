@@ -1,4 +1,4 @@
-# Upstream appVersion: the NetworkPolicy of manifests/egress-credential-injection/k8s-credential-provider.yaml.
+# Upstream: the NetworkPolicy of manifests/egress-credential-injection/k8s-credential-provider.yaml.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

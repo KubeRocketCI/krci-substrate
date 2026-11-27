@@ -1,4 +1,4 @@
-# Upstream appVersion: the NetworkPolicies of manifests/ate-install/ate-system-networkpolicies.yaml.
+# Upstream: the NetworkPolicies of manifests/ate-install/ate-system-networkpolicies.yaml.
 # Ports no policy admits (router /statusz 4040, postgres and atelet
 # from anything but ate-api-server) are reachable only through `kubectl port-forward`.
 # Enforced only by network plugins that implement NetworkPolicy.

@@ -1,4 +1,4 @@
-# Upstream appVersion: the ResourceQuota of manifests/ate-install/atelet.yaml.
+# Upstream: the ResourceQuota of manifests/ate-install/atelet.yaml.
 # atelet runs at system-cluster-critical. Clusters whose ResourceQuota admission limits the critical
 # classes (GKE) admit such pods only in a namespace with a quota of that class. The limit never blocks atelet.
 apiVersion: v1

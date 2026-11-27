@@ -1,4 +1,4 @@
-# Upstream appVersion: the ConfigMap of manifests/ate-install/postgres/postgres.yaml.
+# Upstream: the ConfigMap of manifests/ate-install/postgres/postgres.yaml.
 apiVersion: v1
 kind: ConfigMap
 metadata:

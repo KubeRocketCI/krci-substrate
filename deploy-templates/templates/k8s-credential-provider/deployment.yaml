@@ -1,4 +1,4 @@
-# Upstream appVersion: the Deployment of manifests/egress-credential-injection/k8s-credential-provider.yaml.
+# Upstream: the Deployment of manifests/egress-credential-injection/k8s-credential-provider.yaml.
 # Reference install changes: release image, --preview= (ate-setup, --credential-provider={"name":"k8s.io"}).
 # Chart changes: annotation checksum/namespace-policy; the provider reads the policy at start only.
 apiVersion: apps/v1

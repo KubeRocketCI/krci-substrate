@@ -1,4 +1,4 @@
-# Upstream appVersion: manifests/ate-install/sandboxconfig-gvisor.yaml.
+# Upstream: manifests/ate-install/sandboxconfig-gvisor.yaml.
 # Default SandboxConfig of class gvisor: WorkerPools with no configRef use it.
 # atelet reads gs:// assets anonymously: nodes need egress to storage.googleapis.com.
 apiVersion: ate.dev/v1

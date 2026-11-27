@@ -1,4 +1,4 @@
-# Upstream appVersion: the Service of manifests/egress-credential-injection/k8s-credential-provider.yaml.
+# Upstream: the Service of manifests/egress-credential-injection/k8s-credential-provider.yaml.
 apiVersion: v1
 kind: Service
 metadata:
