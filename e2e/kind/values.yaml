@@ -25,7 +25,6 @@ idpServer:
 snapshots:
   s3:
     bucket: ate-snapshots
-    # Same as binding snapshotRoot of e2e/chainsaw/02-actor/chainsaw-test.yaml.
     prefix: krci-substrate/kind
     region: us-east-1
     endpoint: http://rustfs.ate-system.svc:9000

@@ -15,9 +15,9 @@ spec:
     value: krci-substrate-smoke
   - name: actor
     value: smoke-1
-  # snapshots.s3.bucket and snapshots.s3.prefix of e2e/kind/values.yaml, then the upstream atespaces segment.
+  # Snapshot location of the installed chart (snapshots.s3.bucket, snapshots.s3.prefix), then the upstream atespaces segment.
   - name: snapshotRoot
-    value: s3://ate-snapshots/krci-substrate/kind/atespaces/
+    value: (join('', [x_k8s_get($client, 'v1', 'ConfigMap', 'ate-system', 'ate-api-server-envvars').data.ATE_API_SNAPSHOT_LOCATION, 'atespaces/']))
   steps:
   - name: atespace
     try:
